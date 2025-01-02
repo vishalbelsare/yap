@@ -15,6 +15,17 @@
 *									 *
 *************************************************************************/
 
+/**
+    @file modules.c
+    @brief Low-Leve; Module Support.
+*/
+
+/**
+   @defgroup ModBuiLtins Supporting the module system
+   @ingroup YAPModules
+   @brief Low-level Builtins used ro interact with the module system.
+   @{
+*/
 
 #ifdef SCCSLookupSystemModule
 static char SccsId[] = "%W% %G%";
@@ -29,6 +40,7 @@ static Int current_module1(USES_REGS1);
 static ModEntry *LookupModule(Term a);
 
 const char *Yap_CurrentModuleName(void) {
+  CACHE_REGS
   Term m =  CurrentModule  ? CurrentModule : TermProlog;
   return RepAtom(AtomOfTerm(m))->StrOfAE;
 }
@@ -43,7 +55,6 @@ const char *Yap_CurrentModuleName(void) {
  * @return a new module structure
  */ /**               */
 static ModEntry *initMod(UInt inherit, AtomEntry *ae) {
-  CACHE_REGS
   ModEntry *n;
 
   n = (ModEntry *)Yap_AllocAtomSpace(sizeof(*n));
@@ -55,12 +66,11 @@ static ModEntry *initMod(UInt inherit, AtomEntry *ae) {
   CurrentModules = n;
   n->AtomOfME = ae;
   n->NextOfPE = NULL;
+  if (ae->StrOfAE[0] !=   '$')
+    inherit &= ~M_SYSTEM;
   n->flags = inherit;
-  if (ae == AtomProlog || GLOBAL_Stream == NULL)
-    n->OwnerFile = AtomUserIn;
-  else
-    n->OwnerFile = Yap_ConsultingFile(PASS_REGS1);
-  AddPropToAtom(ae, (PropEntry *)n);
+  n->OwnerFile =  Yap_source_file_name();
+   AddPropToAtom(ae, (PropEntry *)n);
   return n;
 }
 
@@ -91,14 +101,15 @@ static ModEntry *
 LookupModule( Term a)
 {
   if (!a) a=TermProlog;
+  if (!IsAtomTerm(a))
+    return NULL;
   return  GetModule(RepAtom(AtomOfTerm(a)));
 }
 
 static UInt
 module_Flags(Term at){
-  CACHE_REGS
   Atom parent = AtomOfTerm(at);
-    if (parent == NULL || at == TermProlog || CurrentModule == PROLOG_MODULE) {
+    if (parent == NULL || at == TermProlog) {
       return M_SYSTEM | UNKNOWN_ERROR  | DBLQ_CODES |
                  BCKQ_STRING | SNGQ_ATOM;
   } else {
@@ -127,6 +138,8 @@ ModEntry *Yap_GetModuleEntry(Term at) {
   ModEntry *me;
   Term parent;
   if (at==0) at =  TermProlog;
+  if (IsVarTerm(at))
+    return NULL;
   Atom a = AtomOfTerm(at);
   READ_LOCK(RepAtom(a)->ARWLock);
   me = GetModule( RepAtom(a));
@@ -246,6 +259,8 @@ Term Yap_Module_Name(PredEntry *ap) {
 }
 
 bool Yap_isSystemModule(Term a) {
+  if (a==PROLOG_MODULE)
+    return  true;
   ModEntry *me = Yap_GetModuleEntry(a);
   return me != NULL && me->flags & M_SYSTEM;
 }
@@ -467,7 +482,10 @@ static Int new_system_module(USES_REGS1) {
     return false;
   }
   me = Yap_GetModuleEntry( t );
-  me->flags = module_Flags(TermProlog);
+  if (RepAtom(me->AtomOfME)->StrOfAE[0]== '$')
+    me->flags = module_Flags(TermProlog);
+  else
+    me->flags = module_Flags(TermProlog)& ~M_SYSTEM;
   return me != NULL;
 }
 
@@ -492,12 +510,12 @@ static Int yap_strip_clause(USES_REGS1) {
   t1 = Yap_StripModule(t1, &tmod);
   thmod=tmod;
   if (IsVarTerm(t1) || IsVarTerm(tmod)) {
-    Yap_Error(INSTANTIATION_ERROR, t1, "trying to obtain module");
+    Yap_ThrowError(INSTANTIATION_ERROR, t1, "trying to obtain module");
     return false;
   } else if (IsApplTerm(t1)) {
     Functor f = FunctorOfTerm(t1);
     if (IsExtensionFunctor(f)) {
-      Yap_Error(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
+      Yap_ThrowError(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
       return false;
     }
     if (f == FunctorAssert ) {
@@ -506,17 +524,17 @@ static Int yap_strip_clause(USES_REGS1) {
        tbody = ArgOfTerm(2, t1);
       th = Yap_StripModule(th, &thmod);
       if (IsVarTerm(th)) {
-        Yap_Error(INSTANTIATION_ERROR, t1, "trying to obtain module");
+        Yap_ThrowError(INSTANTIATION_ERROR, t1, "trying to obtain module");
         return false;
       } else if (IsVarTerm(thmod)) {
-        Yap_Error(INSTANTIATION_ERROR, thmod, "trying to obtain module");
+        Yap_ThrowError(INSTANTIATION_ERROR, thmod, "trying to obtain module");
         return false;
       } else if (IsIntTerm(th) ||
                  (IsApplTerm(th) && IsExtensionFunctor(FunctorOfTerm(t1)))) {
-        Yap_Error(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
+        Yap_ThrowError(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
         return false;
       } else if (!IsAtomTerm(thmod)) {
-        Yap_Error(TYPE_ERROR_ATOM, thmod, "trying to obtain module");
+        Yap_ThrowError(TYPE_ERROR_ATOM, thmod, "trying to obtain module");
         return false;
       }
     } else {
@@ -525,7 +543,7 @@ static Int yap_strip_clause(USES_REGS1) {
       tbody = TermTrue;
     }
   } else if (IsIntTerm(t1) || IsIntTerm(tmod)) {
-    Yap_Error(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
+    Yap_ThrowError(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
     return false;
   } else {
     th = t1;
@@ -585,7 +603,7 @@ static Int yap_strip_module(USES_REGS1) {
   }
   t1 = Yap_YapStripModule(t1, &tmod);
   if (!t1 || (!IsVarTerm(tmod) && !IsAtomTerm(tmod))) {
-    Yap_Error(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
+    Yap_ThrowError(TYPE_ERROR_CALLABLE, t1, "trying to obtain module");
     return FALSE;
   }
   return Yap_unify(ARG3, t1) && Yap_unify(ARG2, tmod);
@@ -642,13 +660,15 @@ static Int current_source_module(USES_REGS1) {
     return false;
   };
   if (IsVarTerm(t = Deref(ARG2))) {
-    Yap_Error(INSTANTIATION_ERROR, t, NULL);
+    Yap_ThrowError(INSTANTIATION_ERROR, t, NULL);
     return false;
   }
   if (!IsAtomTerm(t)) {
-    Yap_Error(TYPE_ERROR_ATOM, t, NULL);
+    Yap_ThrowError(TYPE_ERROR_ATOM, t, NULL);
     return false;
   }
+  if (t == TermProlog)
+    t = PROLOG_MODULE;
   LOCAL_SourceModule = CurrentModule = t;
   return true;
 }
@@ -753,9 +773,9 @@ void Yap_InitModules(void) {
   initTermMod(ATTRIBUTES_MODULE, ifl|M_SYSTEM);
   initTermMod(HACKS_MODULE, ifl|M_SYSTEM);
   initTermMod(IDB_MODULE, ifl|M_SYSTEM);
-  initTermMod(TERMS_MODULE, ifl|M_SYSTEM);
-  initTermMod(CHARSIO_MODULE, ifl|M_SYSTEM);
-  initTermMod(SYSTEM_MODULE, ifl|M_SYSTEM);
+  initTermMod(TERMS_MODULE, ifl);
+  initTermMod(CHARSIO_MODULE, ifl);
+  initTermMod(SYSTEM_MODULE, ifl);
   initTermMod(ARG_MODULE, ifl);
   initTermMod(DBLOAD_MODULE, ifl);
   initTermMod(GLOBALS_MODULE, ifl);
@@ -764,3 +784,5 @@ void Yap_InitModules(void) {
   CurrentModule = PROLOG_MODULE;
   LOCAL_SourceModule = PROLOG_MODULE;
 }
+
+/// @}

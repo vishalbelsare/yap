@@ -14,6 +14,21 @@
  * comments:	bignum support through gmp				 *
  *									 *
  *************************************************************************/
+
+/**
+ * @file bignum.c
+ * @brief Support for extensions such as bignums and rational numbers 
+ *
+ */
+ 
+/**
+   @addtogroup arithmetic_predicates
+   @brief predicates that perform arithmetic operations or that check if their
+   arguments are evaluable.
+@{
+*/
+
+
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
@@ -46,7 +61,7 @@ SizeOfOpaqueTerm(Term *next, CELL cnext)
     }
   case (CELL)FunctorDouble:
     {
-         sz =2+  SIZEOF_DOUBLE / SIZEOF_INT_P;
+         sz =1+  2*SIZEOF_DOUBLE / SIZEOF_INT_P;
 	 break;
       }
   case (CELL)FunctorString:
@@ -248,7 +263,6 @@ Int blob_info = blob_tag;
     return false;
   if (!GLOBAL_OpaqueHandlers[blob_info].fail_handler)
     return true;
-  CACHE_REGS
   return (GLOBAL_OpaqueHandlers[blob_info].fail_handler)(d );
 }
 
@@ -460,10 +474,16 @@ static Int p_is_string(USES_REGS1) {
           FunctorOfTerm(t) == FunctorString);
 }
 
+
+/* @pred nb_set_bit(+Bit, +BigNum) 
+ *
+ * Set a bit of a big int (hack).
+ *
+ */
 static Int p_nb_set_bit(USES_REGS1) {
 #ifdef USE_GMP
-  Term t = Deref(ARG1);
-  Term ti = Deref(ARG2);
+  Term t = Deref(ARG2);
+  Term ti = Deref(ARG1) ;
   Int i;
 
   if (!(IsNonVarTerm(t) && IsApplTerm(t) && FunctorOfTerm(t) == FunctorBigInt &&
@@ -486,6 +506,11 @@ static Int p_nb_set_bit(USES_REGS1) {
 #endif
 }
 
+/* @pred has_bignums
+ *
+ * True if YAP supports big numbers.
+ *
+ */
 static Int p_has_bignums(USES_REGS1) {
 #ifdef USE_GMP
   return TRUE;
@@ -494,6 +519,11 @@ static Int p_has_bignums(USES_REGS1) {
 #endif
 }
 
+/* @pred opaque(T)
+ *
+ * True if the term has a non-standard implementation.
+ *
+ */
 static Int p_is_opaque(USES_REGS1) {
   Term t = Deref(ARG1);
   if (IsVarTerm(t))
@@ -510,6 +540,11 @@ static Int p_is_opaque(USES_REGS1) {
   return FALSE;
 }
 
+/* @pred nb_set_bit(+Rational)
+ *
+ * True if the term _Rational_ is a number of  the form a/b where a are b are integers, and b may be 1.
+ *
+ */
 static Int p_is_rational(USES_REGS1) {
   Term t = Deref(ARG1);
   if (IsVarTerm(t))
@@ -530,12 +565,12 @@ static Int p_is_rational(USES_REGS1) {
   return FALSE;
 }
 
-void * YAP_FetchArray(Term t1, intptr_t *sz, int *type)
+void * YAP_FetchArray(Term t1, ssize_t *sz, int *basep, int *type, ssize_t *ndims, ssize_t **dims)
 {
   AtomEntry *ae = RepAtom(AtomOfTerm(t1));
 
   READ_LOCK(ae->ARWLock);
-  StaticArrayEntry *p = RepStaticArrayProp(ae->PropsOfAE);
+  ArrayEntry *p = RepStaticArrayProp(ae->PropsOfAE);
   while (!EndOfPAEntr(p) && p->KindOfPE != ArrayProperty){
       p = RepStaticArrayProp(p->NextOfPE);
 }  READ_UNLOCK(ae->ARWLock);
@@ -544,20 +579,26 @@ void * YAP_FetchArray(Term t1, intptr_t *sz, int *type)
       return NULL;
     }
     if (sz)
-*sz = p->ArrayEArity;
-if (p->ArrayType == 
-     array_of_doubles)
+      *sz = (ssize_t)(p->ArrayEArity);
+    if (ndims)
+      *ndims = p->NDimsOfAE;
+    if (dims)
+      *dims = p ->DimsOfAE;
+    if (basep)
+      *basep = p ->BaseOfAE;
+    if (p->ArrayType ==   array_of_doubles)
   {
     *type = 'f';
-    return p->ValueOfVE.floats;
+    return p->ValueOfStaticVE.floats;
   }
   if (p->ArrayType == 
      array_of_ints)
   {
     *type = 'i';
-    return p->ValueOfVE.ints;
+    return p->ValueOfStaticVE.ints;
 
   }
+  
 return NULL;
 }
 
@@ -589,11 +630,11 @@ bool IS_MATRIX(Term inp) {
       return big_tag == MATRIX_INT || big_tag == MATRIX_FLOAT;
     }
       return
-	f == FunctorMatrix ||
+	NameOfFunctor(f) == AtomMatrix ||
 	f == FunctorFloats;
   } else if (IsAtomTerm(inp)) {
     intptr_t size;    int type; 
-    if (YAP_FetchArray(inp, &size, &type)) {
+    if (YAP_FetchArray(inp, &size, NULL, &type, NULL, NULL)) {
       return true;
     }
     }
@@ -601,6 +642,12 @@ bool IS_MATRIX(Term inp) {
 
 }
 
+/* @pred nb_set_bit(+A,+B,?Rational)
+ *
+ * True if the _Rational_ is a normalized representation of a/b where
+ * a are b are integers.
+ *
+ */
 static Int p_rational(USES_REGS1) {
 #ifdef USE_GMP
   Term t = Deref(ARG1);
@@ -653,3 +700,5 @@ void Yap_InitBigNums(void) {
   Yap_InitCPred("fast_get_for_int_vector" ,3,fast_get_for_int_vector,SafePredFlag);
   Yap_InitCPred("fast_set_for_int_vector" ,3,fast_set_for_int_vector,SafePredFlag);
 }
+
+/// @}

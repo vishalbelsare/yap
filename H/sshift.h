@@ -510,8 +510,6 @@ ArityAdjust__ (Int val USES_REGS)
   return val;
 }
 
-INLINE_ONLY OPCODE OpcodeAdjust__ (OPCODE CACHE_TYPE);
-
 INLINE_ONLY OPCODE
 OpcodeAdjust__ (OPCODE val USES_REGS)
 {
@@ -625,12 +623,12 @@ GlobalEntryAdjust__ (GlobalEntry * at USES_REGS)
 
 
 
-INLINE_ONLY union CONSULT_OBJ *ConsultObjAdjust__ (union CONSULT_OBJ * CACHE_TYPE);
+INLINE_ONLY struct CONSULT_OBJ *ConsultObjAdjust__ (struct CONSULT_OBJ * CACHE_TYPE);
 
-INLINE_ONLY union CONSULT_OBJ *
-ConsultObjAdjust__ (union CONSULT_OBJ *co USES_REGS)
+INLINE_ONLY struct CONSULT_OBJ *
+ConsultObjAdjust__ (struct CONSULT_OBJ *co USES_REGS)
 {
-  return (union CONSULT_OBJ *) ((union CONSULT_OBJ *) (CharP (co) + LOCAL_HDiff));
+  return (struct CONSULT_OBJ *) ((struct CONSULT_OBJ *) (CharP (co) + LOCAL_HDiff));
 }
 
 
@@ -906,18 +904,6 @@ PtoGlobalEAdjust__ (GlobalEntry * ptr USES_REGS)
     return NULL;
   return (GlobalEntry *) (((GlobalEntry *) (CharP (ptr) + LOCAL_HDiff)));
 }
-
-
-INLINE_ONLY StaticArrayEntry *PtoArraySAdjust__ (StaticArrayEntry * CACHE_TYPE);
-
-INLINE_ONLY StaticArrayEntry *
-PtoArraySAdjust__ (StaticArrayEntry * ptr USES_REGS)
-{
-  if (!ptr)
-    return NULL;
-  return (StaticArrayEntry *) (((StaticArrayEntry *) (CharP (ptr) + LOCAL_HDiff)));
-}
-
 
 
 INLINE_ONLY struct logic_upd_clause *PtoLUCAdjust__ (struct logic_upd_clause* CACHE_TYPE);

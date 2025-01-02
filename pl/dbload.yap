@@ -17,7 +17,8 @@
 
 %% @file dbload.yap
 
-:- system_module('$db_load',	  [], []).
+:- system_module_('$db_load',	  [], [load_db/1
+				      ]).
 
 :- use_system_module( '$_boot', ['$$compile'/4]).
 
@@ -35,7 +36,7 @@
 % @{
 
 /*!
- * @pred load_mega_clause( +Stream ) is detail
+ * @pred load_mega_clause( +Stream ) is det
  * Load a single predicare composed of facts with the same size.
  */
 load_mega_clause( Stream ) :-
@@ -50,15 +51,16 @@ load_mega_clause( Stream ) :-
 
 /*!
  * @pred load_db( +Files ) is det
- * Load files each one containing as single predicare composed of facts with the same size.
+ * Load files each one containing as single predicate composed of facts with the same size.
  */
-prolog:load_db(Fs) :-
+load_db(Fs) :-
         '$current_module'(M0),
-	prolog_flag(agc_margin,Old,0),
+ 	current_prolog_flag(agc_margin,Old,0),
+ 	set_prolog_flag(agc_margin,0),
 	dbload(Fs,M0,load_db(Fs)),
 	load_facts,
-	prolog_flag(agc_margin,_,Old),
-	clean_up.
+	set_prolog_flag(agc_margin,Old),
+	'$clean_up'.
 
 dbload(Fs, _, G) :-
 	var(Fs),
@@ -112,7 +114,7 @@ get_module(T,M,T,M).
 
 
 load_facts :-
-	!, % yap_flag(exo_compilation, on), !.
+	!, % set_prolog_flag(exo_compilation, on), !.
 	load_exofacts.
 load_facts :-
 	retract(dbloading(Na,Arity,M,T,NaAr,_)),
@@ -183,11 +185,11 @@ exodb_add_fact(T0, M0) :-
 	nb_setval(NaAr,I),
 	exoassert(T,Handle,I0).
 
-clean_up :-
+'$clean_up' :-
 	retractall(dbloading(_,_,_,_,_,_)),
 	retractall(dbprocess(_,_)),
 	fail.
 
-clean_up.
+'$clean_up'.
 
 %% @}

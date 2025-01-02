@@ -153,14 +153,14 @@ ConsolePipeGetc(int sno)
   count = read(s->u.pipe.fd, &c, sizeof(char));
   LOCAL_PrologMode &= ~ConsoleGetcMode;
   if (count == 0) {
-    return console_post_process_eof(s);
+    ch=-1;
   } else if (count > 0) {
     ch = c;
   } else {
-    Yap_Error(SYSTEM_ERROR_INTERNAL, TermNil, "read");
-    return console_post_process_eof(s);
+    Yap_ThrowError(SYSTEM_ERROR_INTERNAL, TermNil, "read");
+    return -1;
   }
-  return console_post_process_read_char(ch, s);
+  return post_process_read_char(ch, s);
 }
 
 
@@ -175,7 +175,8 @@ PipeGetc(int sno)
   int count;
   count = read(s->u.pipe.fd, &c, sizeof(char));
   if (count == 0) {
-    return EOF;
+    Yap_EOF_Stream(s);
+    return  EOF;
   } else if (count > 0) {
     ch = c;
   } else {
@@ -231,7 +232,6 @@ open_pipe_stream (USES_REGS1)
   Yap_initStream(sno, NULL, NULL,"r", 0, LOCAL_encoding,  st->status, NULL);
   st->u.pipe.fd = filedes[0];
   st->file = fdopen( filedes[0], "r");
-  UNLOCK(st->streamlock);
   sno = GetFreeStreamD();
   if (sno < 0)
     return (PlIOError (RESOURCE_ERROR_MAX_STREAMS,TermNil, "new stream not available for open_pipe_stream/2"));
@@ -241,7 +241,6 @@ open_pipe_stream (USES_REGS1)
   Yap_initStream(sno, NULL, NULL,"w", 0, LOCAL_encoding, st->status, NULL);
   st->u.pipe.fd = filedes[1];
   st->file = fdopen( filedes[1], "w");
-  UNLOCK(st->streamlock);
   t2 = Yap_MkStream (sno);
   return
     Yap_unify (ARG1, t1) &&

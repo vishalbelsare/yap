@@ -13,10 +13,17 @@
  *									 *
  *************************************************************************/
 
-#
+
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
+
+/**
+ * @file attvar.c
+ * @brief Attributed Variables C-code
+ *
+ */
+
 
 #include "Yap.h"
 
@@ -28,15 +35,14 @@ static char SccsId[] = "%W% %G%";
 #include "YapSignals.h"
 
 /**
-    @defgroup AttributedVariables_Builtins Low-level support for Attributed
+   @defgroup AttributedVariables_Builtins Low-level support for Attributed
    Variables
-
-     @brief Implementation of Attribute Declarations
-    @ingroup AttributedVariables
+   @ingroup AttributedVariables
+   @brief Implementation of Attribute Declarations
     @{
 */
 
-void Yap_wake_goal(Term tg USES_REGS) {
+void Yap_wakeup_goal(Term tg USES_REGS) {
   /* follow the chain */
   Term WGs = Deref(Yap_ReadTimedVar(LOCAL_WokenGoals));
   Term *n, t = AbsPair((n=HR));
@@ -49,30 +55,44 @@ void Yap_wake_goal(Term tg USES_REGS) {
 
 void AddToQueue(attvar_record *attv USES_REGS) {
   Term t[2];
-  Term ng;
+  Term ng, d0, *pt0;
 
+  pt0 = HR;
   t[0] = (CELL) & (attv->Done);
-  t[1] = attv->Future;
+  t[1] = d0 = attv->Future;
   t[1] = Yap_MkApplTerm(FunctorAttGoal, 2, t);
   t[0] = TermAttributes;
   ng = Yap_MkApplTerm(FunctorModule, 2, t);
-  Yap_wake_goal(ng PASS_REGS);
+  Yap_wakeup_goal(ng PASS_REGS);
+  if (d0==AbsAppl(pt0))
+    pt0[2] = attv->Future = AbsAppl(HR);
+  if (d0==AbsPair(pt0))
+    pt0[2] = attv->Future = AbsPair(HR);
 }
+
 void AddCompareToQueue(Term Cmp, Term t1, Term t2 USES_REGS) {
   Term ts[3];
+  
   ts[0] = Cmp;
   ts[1] = MkGlobal(t1);
   ts[2] = MkGlobal(t2);
   Term tg = Yap_MkApplTerm(FunctorCompare, 3, ts);
-  Yap_wake_goal(tg PASS_REGS);
+  Yap_wakeup_goal(tg PASS_REGS);
 }
 
 void AddUnifToQueue(Term t1, Term t2 USES_REGS) {
   Term ts[2];
-  ts[0] = MkGlobal(t1);
+    Term *pt0;
+
+  pt0 = HR;
+ts[0] = MkGlobal(t1);
   ts[1] = MkGlobal(t2);
   Term tg = Yap_MkApplTerm(FunctorEq, 2, ts);
-  Yap_wake_goal(tg PASS_REGS);
+  Yap_wakeup_goal(tg PASS_REGS);
+  if (t2==AbsAppl(pt0))
+    RepAppl(tg)[2] = AbsAppl(HR);
+  if (t2==AbsPair(pt0))
+    RepAppl(tg)[2] = AbsPair(HR);
 }
 
 static attvar_record *BuildNewAttVar(USES_REGS1) {
@@ -173,7 +193,7 @@ static int TermToAttVar(Term attvar, Term to USES_REGS) {
 }
 
 static void WakeAttVar(CELL *pt1, CELL reg2 USES_REGS) {
-  
+
   RESET_VARIABLE(pt1);
   // get record
   attvar_record *attv = RepAttVar(pt1);
@@ -203,13 +223,11 @@ static void WakeAttVar(CELL *pt1, CELL reg2 USES_REGS) {
   }
   CELL *pt2 = VarOfTerm(reg2);
   if (pt1 == pt2 || attv->Future == reg2) {
-    LOCAL_DoNotWakeUp = false;
-    return;
+      return;
   }
   if (!IsAttVar(pt2)) {
     Bind_Global_NonAtt(pt2, attv->Done);
-    LOCAL_DoNotWakeUp = false;
-    return;
+     return;
   }
   attvar_record *susp2 = RepAttVar(pt2);
   Term td2 = Deref(susp2->Done);
@@ -219,7 +237,6 @@ static void WakeAttVar(CELL *pt1, CELL reg2 USES_REGS) {
   if (IsEmptyWakeUp(susp2->Atts)) {
     /* no attributes to wake */
     Bind_Global_NonAtt(pt2, attv->Done);
-    LOCAL_DoNotWakeUp = false;
     return;
   }
   reg2 = Deref(susp2->Future);
@@ -241,19 +258,15 @@ static void WakeAttVar(CELL *pt1, CELL reg2 USES_REGS) {
 
 void Yap_WakeUp(CELL *pt0) {
   CACHE_REGS
-    if (LOCAL_DoNotWakeUp)
-      return;
-  CELL d0 = *pt0;
+  /*     if (LOCAL_DoNotWakeUp) { */
+  /*    return; */
+  /*     } */
+  /* LOCAL_DoNotWakeUp = true; */
+
+    CELL d0 = *pt0;
   RESET_VARIABLE(pt0);
-#if DEBUG
-  CELL *pt1 = S;
-  if (pt1>=HB && pt1 <HR)
-    while (pt1<HR) {
-      RESET_VARIABLE(pt1);
-      pt1++;
-    }
-#endif
   WakeAttVar(pt0, d0 PASS_REGS);
+  //  *pt0 = d0;
 }
 
 static void mark_attvar(CELL *orig) { return; }
@@ -428,7 +441,11 @@ static void ReplaceAtts(attvar_record *attv, Term oatt, Term att USES_REGS) {
 #endif
 
 static void DelAllAtts(attvar_record *attv USES_REGS) {
-  MaBind(&(attv->Done), attv->Future);
+  MaBind(&(attv->Atts), TermNil);
+  /* MaBind(&(attv->Done), MkVarTerm()); */
+  /* MaBind(&(attv->Future), attv->Done); */
+
+
 }
 
 static void DelAtts(attvar_record *attv, Term oatt USES_REGS) {
@@ -628,7 +645,7 @@ static Int put_atts(USES_REGS1) {
     Term t = Deref(ARG1);
     Term tatts = Deref(ARG2);
     if (IsAttVar(VarOfTerm(t))) {
-      attv0 = RepAttVar(VarOfTerm(t));
+1      attv0 = RepAttVar(VarOfTerm(t));
       MaBind(&(attv0->Atts),tatts);
       return true;
       } */
@@ -1029,35 +1046,9 @@ static Int put_attr(USES_REGS1) {
 
     if (IsAttachedTerm(inp)) {
       attv = RepAttVar(VarOfTerm(inp));
-      ts[2] = attv->Atts;
-      MaBind(&attv->Atts,  Yap_MkApplTerm(FunctorAtt1, 3, ts));
-      Term start = attv->Atts;
-  do {
-    if (IsVarTerm(start))
-      break;
-    if (!IsApplTerm(start))
-      break;
-    if (FunctorOfTerm(start) != FunctorAtt1) {
-      start = ArgOfTerm(1, start);
-      continue;
-    }
-    if (ts[0] != ArgOfTerm(1, start)) {
-      start = ArgOfTerm(3, start);
-      continue;
-    }
-    // got it
-    MaBind(RepAppl(start)+2, Deref(ARG3));
-    return true;
-  } while (TRUE);
-  ts[1] = MkGlobal(ARG3);
-    if (IsVarTerm(attv->Atts))
-      ts[2] = TermNil;
-    else
-      ts[2] = attv->Atts;
-   
-
-    MaBind(&attv->Atts, Yap_MkApplTerm(FunctorAtt1,3,ts))
-  } else {
+      //ts[2] = attv->Atts;
+      //MaBind(&attv->Atts,  Yap_MkApplTerm(FunctorAtt1, 3, ts));
+    } else {
     
       while (!(attv = BuildNewAttVar(PASS_REGS1))) {
         LOCAL_Error_Size = sizeof(attvar_record);
@@ -1065,22 +1056,31 @@ static Int put_attr(USES_REGS1) {
           Yap_Error(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
           return FALSE;
         }
+	inp = Deref(ARG1);
       }
-	S = HR;
-	HR+=4;
-	*S++ = (CELL)FunctorAtt1;
-	*S++ = Deref(ARG2);
-      *S++= MkGlobal(ARG3);
-      *S++ = TermNil;
-      attv->Atts = AbsAppl(S-4);
-        inp = Deref(ARG1);
-	MaBind(VarOfTerm(inp),attv->Done);
-
-	
+      MaBind(VarOfTerm(inp),attv->Done);
     }
-    
- } 
+    Term *startp = &attv->Atts, start;
+    while ((start = *startp) != TermNil && !IsVarTerm(start)) {
+      if (!IsApplTerm(start))
+	return false;
+    if (FunctorOfTerm(start) != FunctorAtt1) {
+      start = ArgOfTerm(1, start);
+      continue;
+    }
+    if (ts[0] == ArgOfTerm(1, start)) {
+      MaBind( RepAppl(start)+2 , MkGlobal(ARG3));
+      return true;
+    }
+    }
+    ts[1] = MkGlobal(ARG3);
+    ts[2] = TermNil;
+    MaBind(startp, Yap_MkApplTerm(FunctorAtt1,3,ts))
     return true;
+  } else {
+    Yap_ThrowError(REPRESENTATION_ERROR_VARIABLE, inp, "bound call to put_attr");
+    return false;
+  }
 }
 
 /** @pred put_attrs(+ _Var_,+ _Attributes_)
@@ -1120,7 +1120,7 @@ static Int del_attr(USES_REGS1) {
   Term inp = Deref(ARG1);
   Term mod = must_be_module(ARG2);
   /* if this is unbound, ok */
-  if (!IsVarTerm(inp) || IsAttachedTerm(inp)) {
+  if (!IsVarTerm(inp) || !IsAttachedTerm(inp)) {
     return true;
   }
   attvar_record *attv = RepAttVar(VarOfTerm(inp));
@@ -1143,7 +1143,9 @@ static Int del_attr(USES_REGS1) {
     // got it
     Term next = ArgOfTerm(3, start);
     if (outside == &attv->Atts && next == TermNil) {
+      Term nv = MkVarTerm();
       DelAllAtts(attv PASS_REGS);
+      MaBind(&attv->Done,nv);
     } else {
       MaBind(outside, next);
     }
@@ -1161,7 +1163,7 @@ side-effects.
 
 
 */
-static Int del_attrs(USES_REGS1) {
+ static Int del_attrs(USES_REGS1) {
   /* receive a variable in ARG1 */
   Term inp = Deref(ARG1);
   /* if this is unbound, ok */
@@ -1170,6 +1172,8 @@ static Int del_attrs(USES_REGS1) {
   }
   attvar_record *attv;
   attv = RepAttVar(VarOfTerm(inp));
+  Term nv = MkVarTerm();
+  MaBind(&attv->Done,nv);
   DelAllAtts(attv PASS_REGS);
   return TRUE;
 }
@@ -1193,7 +1197,7 @@ static Int swi_all_atts(USES_REGS1) {
 }
 
 static Term AllAttVars(USES_REGS1) {
-  CELL *pt = H0;
+  CELL *pt = H0+1;
   CELL *myH = HR;
 
   while (pt < myH) {
@@ -1237,15 +1241,18 @@ static Term AllAttVars(USES_REGS1) {
 
 static Int all_attvars(USES_REGS1) {
   do {
-    Term out;
+    Term out, in = Deref(ARG1);
 
+    if (IsVarTerm(in) &&  IsAttVar(VarOfTerm(in))) {
+    return false;
+  }
     if (!(out = AllAttVars(PASS_REGS1))) {
       Yap_Error(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
-      return FALSE;
+      return false;
     } else {
       return Yap_unify(ARG1, out);
     }
-  } while (TRUE);
+  } while (true);
 }
 
 /** @pred attvar( _-Var_)
@@ -1294,7 +1301,6 @@ static Int fast_unify(USES_REGS1) {
 }
 
 void Yap_InitAttVarPreds(void) {
-  CACHE_REGS
   Yap_InitCPred("get_all_swi_atts", 2, swi_all_atts, SafePredFlag);
   Yap_InitCPred("put_attr", 3, put_attr, 0);
   Yap_InitCPred("put_attrs", 2, put_attrs, 0);
@@ -1306,28 +1312,26 @@ void Yap_InitAttVarPreds(void) {
   Yap_InitCPred("free_att", 3, free_att, SafePredFlag);
   Yap_InitCPred("put_att", 5, put_att, 0);
   Yap_InitCPred("rm_att", 4, rm_att, 0);
-  Term OldCurrentModule = CurrentModule;
-  CurrentModule = ATTRIBUTES_MODULE;
   GLOBAL_attas[attvars_ext].bind_op = WakeAttVar;
   GLOBAL_attas[attvars_ext].copy_term_op = CopyAttVar;
   GLOBAL_attas[attvars_ext].to_term_op = AttVarToTerm;
   GLOBAL_attas[attvars_ext].term_to_op = TermToAttVar;
   GLOBAL_attas[attvars_ext].mark_op = mark_attvar;
-  Yap_InitCPred("has_module_atts", 2, has_atts, SafePredFlag);
-  Yap_InitCPred("get_all_atts", 2, get_all_atts, SafePredFlag);
-  Yap_InitCPred("get_module_atts", 2, get_atts, SafePredFlag);
-  Yap_InitCPred("put_module_atts", 2, put_atts, 0);
-  Yap_InitCPred("del_all_module_atts", 2, del_atts, 0);
-  Yap_InitCPred("del_all_atts", 1, del_all_atts, 0);
-  Yap_InitCPred("set_attvar", 2, set_attvar, SafePredFlag);
+  Yap_InitCPredInModule("has_module_atts", 2, has_atts, SafePredFlag, ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("get_all_atts", 2, get_all_atts, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("get_module_atts", 2, get_atts, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("put_module_atts", 2, put_atts, 0 , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("del_all_module_atts", 2, del_atts, 0 , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("del_all_atts", 1, del_all_atts, 0 , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("set_attvar", 2, set_attvar, SafePredFlag , ATTRIBUTES_MODULE);
+  // Yap_InitCPredInModule("bind_attvar", 1, bind_attvar, SafePredFlag , ATTRIBUTES_MODULE);
   Yap_InitCPred("bind_attvar", 1, bind_attvar, SafePredFlag);
-  Yap_InitCPred("unbind_attvar", 1, unbind_attvar, SafePredFlag);
-  Yap_InitCPred("modules_with_attributes", 2, modules_with_atts, SafePredFlag);
-  Yap_InitCPred("void_term", 1, void_term, SafePredFlag);
-  Yap_InitCPred("free_term", 1, free_term, SafePredFlag);
-  Yap_InitCPred("fast_unify_attributed", 2, fast_unify, 0);
+  Yap_InitCPredInModule("unbind_attvar", 1, unbind_attvar, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("modules_with_attributes", 2, modules_with_atts, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("void_term", 1, void_term, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("free_term", 1, free_term, SafePredFlag , ATTRIBUTES_MODULE);
+  Yap_InitCPredInModule("fast_unify_attributed", 2, fast_unify, 0 , ATTRIBUTES_MODULE);
   Yap_InitCPred("all_attvars", 1, all_attvars, 0);
-  CurrentModule = OldCurrentModule;
   Yap_InitCPred("attvar", 1, is_attvar, SafePredFlag | TestPredFlag);
   Yap_InitCPred("$att_bound", 1, attvar_bound, SafePredFlag | TestPredFlag);
   Yap_InitCPred("$wake_up_start", 0, wake_up_start, 0);

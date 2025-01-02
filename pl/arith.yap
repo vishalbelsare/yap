@@ -1,7 +1,5 @@
 /*************************************************************************
 *									 *
-*	 YAP Prolog 							 *
-*									 *
 *	Yap Prolog was developed at NCCUP - Universidade do Porto	 *
 *									 *
 * Copyright L.Damas, V.S.Costa and Universidade do Porto 1985-1997	 *
@@ -19,7 +17,7 @@
 
 %% @file arith.yap
 
-:- system_module( '$_arith', [compile_expressions/0,
+:- system_module_( '$_arith', [compile_expressions/0,
         expand_exprs/2,
         plus/3,
         succ/2], ['$c_built_in'/4]).
@@ -36,7 +34,7 @@
 
 /** @defgroup CompilerAnalysis Internal Clause Rewriting
     @ingroup YAPCompilerSettings
-
+    @{
   YAP supports several clause optimisation mechanisms, that
   are designed to improve execution of arithmetic
   and term construction built-ins. In other words, during the
@@ -59,7 +57,6 @@
 
 */
 
-%% @{
 
 /** @pred expand_exprs(- _O_,+ _N_)
 	Control term expansion during compilation.
@@ -73,18 +70,18 @@ This predicate is useful when debugging, to ensure execution close to the origin
 
 */
 expand_exprs(Old,New) :-
-    yap_flag(optimise,BO),
+    current_prolog_flag(optimise,BO),
 	(BO == true ->
 			Old = on ;
 			Old = off ),
 	(New == on ->
 			B = true ;
 			B = false ),
-	yap_flag(optimise,B).
+	current_prolog_flag(optimise,B).
 
-'$set_arith_expan'(on) :- prolog_flag(optimise,true).
-'$set_arith_expan'(off) :- prolog_flag(optimise,false).
-
+'$set_arith_expan'(on) :- set_prolog_flag(optimise,true).
+'$set_arith_expan'(off) :- set_prolog_flag(optimise,false).
+ 
 /**  @pred   compile_expressions
 
 After a call to this predicate, arithmetical expressions will be compiled.
@@ -95,7 +92,7 @@ compile_expressions :- set_prolog_flag(optimise, true).
 /**  @pred do_not_compile_expressions
 
 
-After a call to this predicate, arithmetical expressions will not be compiled.
+After a call to this predicate, arithmetical expressions will not be preprocessed.
 
 ```
 ?- source, do_not_compile_expressions.
@@ -125,46 +122,30 @@ do_not_compile_expressions :-
 '$c_built_in'(IN, _M, (?- _H), IN) :-
     !.
 '$c_built_in'(IN, M, H, OUT) :-
-    prolog_flag(optimise,true), !,
+    current_prolog_flag(optimise,true), !,
     '$do_c_built_in'(IN, M, H, OUT).
 '$c_built_in'(IN, _, _H, IN).
  
 
-'$do_c_built_in'(G, M, H, OUT) :- var(G), !,
-	'$do_c_built_metacall'(G, M, H, OUT).
-'$do_c_built_in'(Mod:G, _, H, OUT) :-
-	'$yap_strip_module'(Mod:G, M1,  G1),
-	(var(G1);var(M1)), !,
-	'$do_c_built_metacall'(G1, M1, H, OUT).
-'$do_c_built_in'(throw_error( Error, Goal), M, Head,OError) :-
-        stream_property(loop_stream, file_name(F)),
-        stream_property(loop_stream, line_number(L)),
-        functor(Head,N,A),
-        !,
-        OError = throw(error(Error,exception( [
-                           prologPredFile=F,
-                           prologPredName=N,
-                           prologPredModule=M,
-                           prologPredArity=A,
-                           prologPredLine=L,
-                           errorUserGoal=Goal
-                          ])) ).
-'$do_c_built_in'(throw_error( Error, G), _M, _Head, (throw(error(Error,G)))) :- !.
-'$do_c_built_in'(io_error( Error, Goal), M, Head,OError) :-
-        stream_property(loop_stream, file_name(F)),
-        stream_property(loop_stream, line_number(L)),
-        functor(Head,N,A),
-        !,
-        OError = ( prolog_flag(file_errors, error),
-                throw(error(Error,exception( [
-                           prologPredFile=F,
-                           prologPredName=N,
-                           prologPredModule=M,
-                           prologPredArity=A,
-                           prologPredLine=L,
-                           errorUserGoal=Goal
-                          ])) )) .
-'$do_c_built_in'(io_error( Error, G), _M, _Head, (prolog_flag(file_errors, error), throw(error(Error,G)))) :- !.
+'$do_c_built_in'(Mod:G, _, _, M1:G1) :-
+    '$yap_strip_module'(Mod:G, M1,  G1),
+    (var(G1);var(M1)),
+    !.
+'$do_c_built_in'(Mod:G, _, _, G1) :-
+    !,
+    '$do_c_built_in'(G,Mod, _, G1).
+'$do_c_built_in'(throw_error(error,ErrorTerm), M, Head,
+		 '$user_exception'(Error,Info,F,L,M,N,A)) :-
+    nonvar(ErrorTerm),
+    ErrorTerm = error( Error ,Info),
+    !,
+    ( stream_property(loop_stream, file_name(F)) -> true ; F = user_input),
+         ( stream_property(loop_stream, line_number(L)) -> true;  L = 0),
+	 functor(Head,N,A).
+'$do_c_built_in'(throw_file_error( error, error(Error, G)), _M, _Head,
+		 (current_prolog_flag(file_errors, error), NG)) :-
+    !,
+    '$do_c_built_in'(throw_error( error, error(Error, G)), _M, _Head, NG).
 '$do_c_built_in'(X is Y, M, H,  P) :-
         primitive(X), !,
 	'$do_c_built_in'(X =:= Y, M, H, P).
@@ -182,15 +163,19 @@ do_not_compile_expressions :-
 
 
 	).
-'$do_c_built_in'('C'(A,B,C), _, _, (A=[B|C])) :- !.
+ 
 
-'$do_c_built_in'(phrase(NT,Xs),  Mod, _H, NTXsNil) :-
-	prolog:'$c_phrase'(NT,Xs,[], Mod, NTXsNil).
-'$do_c_built_in'(phrase(NT,Xs0,Xs), Mod, _,  NewGoal) :-
-    prolog:'$c_phrase'(NT, Xs0, Xs, Mod, NewGoal ).
+:- multifile prolog:'$inline'/2.
 
+:- multifile user:inline/2.
 
-'$do_c_built_in'(Comp0, _, _, R) :-		% now, do it for comparisons
+'$do_c_built_in'(Comp,_ , _, R) :-
+    prolog:'$inline'(Comp, R),
+    !.
+'$do_c_built_in'(Comp, _M, _, R) :-
+    user:inline(Comp, R),
+    !.
+'$do_c_built_in'(Comp0, _, _,	 R) :-		% now, do it for comparisons
 	'$compop'(Comp0, Op, E, F),
 	!,
 	'$compop'(Comp,  Op, U, V),
@@ -198,7 +183,7 @@ do_not_compile_expressions :-
 	expand_expr(F, Q, V),
 	'$do_and'(P, Q, R0),
 	'$do_and'(R0, Comp, R).
-'$do_c_built_in'(P, _M, _H, P).
+'$do_c_built_in'(P, M, _H,M: P).
 
 /*
 '$inline':do_c_built_metacall(G1, Mod, _, '$execute_wo_mod'(G1,Mod)) :-
@@ -212,7 +197,7 @@ do_not_compile_expressions :-
 '$do_and'(P, true, P) :- !.
 '$do_and'(P, Q, (P,Q)).
 
-% V is the result of the simplification,
+% V is the resuxut of the simplification,
 % X the result of the initial expression
 % and the last argument is how we are writing this result
 '$drop_is'(V, V1, P0, G) :-
@@ -332,6 +317,17 @@ expand_expr(\/, X, Y, O, Q, P) :-
 	'$preprocess_args_for_commutative'(X, Y, X1, Y1, E),
 	'$do_and'(E, '$or'(X1,Y1,O), F),
 	'$do_and'(Q, F, P).
+expand_expr(xor, X, Y, O, Q, P) :-
+     !,
+    expand_expr(#, X, Y, O, Q, P).
+expand_expr(><, X, Y, O, Q, P) :-
+     !,
+    expand_expr(#, X, Y, O, Q, P).
+expand_expr(#, X, Y, O, Q, P) :-
+   !,
+	'$preprocess_args_for_commutative'(X, Y, X1, Y1, E),
+	'$do_and'(E, '$xor'(X1,Y1,O), F),
+	'$do_and'(Q, F, P).
 expand_expr(<<, X, Y, O, Q, P) :-
 	var(X), integer(Y), Y < 0,
 	Z is -Y, !,
@@ -387,10 +383,10 @@ expand_expr(Op, X, Y, O, Q, P) :-
 
 '$goal_expansion_allowed'(phrase(NT,_Xs0,_Xs), Mod) :-
     current_prolog_flag( goal_expansion_allowed, true ),
-    must_be_callable(NT),
+    callable(NT),
     atom(Mod).
 
-%%	contains_illegal_dcgnt(+Term) is semidet.
+%% @pred contains_illegal_dcgnt(+Term) is semidet.
 %
 %	True if Term contains a non-terminal   we cannot deal with using
 %	goal-expansion. The test is too general approximation, but safe.
@@ -409,6 +405,8 @@ expand_expr(Op, X, Y, O, Q, P) :-
 
 
 :- set_prolog_flag(optimise,true).
+
 /**
   @}
 */
+

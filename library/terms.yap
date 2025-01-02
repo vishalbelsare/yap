@@ -15,16 +15,15 @@
 *									 *
 *************************************************************************/
 :- module(terms, [
-		  term_hash/2,
+	      is_cyclic_term/1,
+	      term_hash/2,
 		  term_hash/4,
 		  term_subsumer/3,
 		  instantiated_term_hash/4,
 		  variant/2,
 		  unifiable/3,
 		  subsumes/2,
-
 		  subsumes_chk/2,
-		  cyclic_term/1,
 		  variable_in_term/2,
 		  variables_within_term/3,
 		  new_variables_in_term/3
@@ -49,12 +48,6 @@ Succeed if the argument  _Term_ is a cyclic term.
 */
 
 
-/** @pred  term_subsumer(? _T1_, ? _T2_, ? _Subsumer_) 
-
-Succeed if  _Subsumer_ unifies with the least general
-generalization over  _T1_ and
- _T2_.
-*/
 
 
 
@@ -76,17 +69,6 @@ Succeed if  _Term1_ subsumes  _Term2_ but does not bind any
 variable in  _Term1_.
 */
 
-/** @pred term_hash(+ _Term_, + _Depth_, + _Range_, ? _Hash_)
-
-Unify  _Hash_ with a positive integer calculated from the structure
-of the term.  The range of the positive integer is from `0` to, but
-not including,  _Range_. If  _Depth_ is `-1` the whole term
-is considered. Otherwise, the term is considered only up to depth
-`1`, where the constants and the principal functor have depth
-`1`, and an argument of a term with depth  _I_ has depth  _I+1_. 
-
- 
-*/
 /** @pred term_hash(+ _Term_, ? _Hash_) 
 
 
@@ -128,6 +110,12 @@ Succeed if  _Term1_ and  _Term2_ are variant terms.
 %term_hash(X,Y) :-
 %	term_hash(X,-1,16'1000000,Y).
 
+/** @pred  term_subsumer(? _T1_, ? _T2_, ? _Subsumer_) 
+
+Succeed if  _Subsumer_ unifies with the least general
+generalization over  _T1_ and
+ _T2_.
+*/
 subsumes_chk(X,Y) :-
 	\+ \+ subsumes(X,Y).
 

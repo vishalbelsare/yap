@@ -13,6 +13,14 @@
  *									 *
  *************************************************************************/
 
+
+/// @file sys.c
+/// @addtogroup operating_system_support
+///
+/// @{
+///
+/// @brief Support for Operating System Interfacing
+///
 #include "YapInterface.h"
 
 #include <stdlib.h>
@@ -192,14 +200,10 @@ static YAP_Bool datime(void) {
   out[3] = YAP_MkIntTerm(stime.wHour);
   out[4] = YAP_MkIntTerm(stime.wMinute);
   out[5] = YAP_MkIntTerm(stime.wSecond);
-#elif HAVE_TIME
-  time_t tp;
-
-  if ((tp = time(NULL)) == -1) {
-    return (YAP_Unify(YAP_ARG2, YAP_MkIntTerm(errno)));
-  }
-#ifdef HAVE_LOCALTIME
+#elif HAVE_LOCALTIME
   {
+    time_t tp;
+    time(&tp);
     struct tm *loc = localtime(&tp);
     if (loc == NULL) {
       return (YAP_Unify(YAP_ARG2, YAP_MkIntTerm(errno)));
@@ -211,9 +215,6 @@ static YAP_Bool datime(void) {
     out[4] = YAP_MkIntTerm(loc->tm_min);
     out[5] = YAP_MkIntTerm(loc->tm_sec);
   }
-#else
-  oops
-#endif /* HAVE_LOCALTIME */
 #else
   oops
 #endif /* HAVE_TIME */
@@ -271,7 +272,7 @@ static YAP_Bool rename_file(void) {
 #endif
 
 /// see https://stackoverflow.com/questions/2180079/how-can-i-copy-a-file-on-unix-using-c for the original code.
-YAP_Bool OSCopyFile(void)
+ YAP_Bool OSCopyFile(void)
 {    
   const char *source = (char *)YAP_AtomName(YAP_AtomOfTerm(YAP_ARG1));
   const char *destination = (char *)YAP_AtomName(YAP_AtomOfTerm(YAP_ARG2));
@@ -309,9 +310,9 @@ YAP_Bool OSCopyFile(void)
 static YAP_Bool read_link(void) {
 #if HAVE_READLINK
   char *s1 = (char *)YAP_AtomName(YAP_AtomOfTerm(YAP_ARG1));
-  char buf[MAXPATHLEN + 1];
+  char buf[PATH_MAX + 1];
 
-  if (readlink(s1, buf, MAXPATHLEN) < 0)
+  if (readlink(s1, buf, PATH_MAX) < 0)
     return false;
 
   /* return an error number */
@@ -476,8 +477,9 @@ static YAP_Bool p_mktemp(void) {
   return (TRUE);
 }
 
+
 static YAP_Bool p_tmpnam(void) {
-#if HAVE_MKSTEMP
+  #if HAVE_MKSTEMP
   char s[21];
   strcpy(s, "/tmp/YAP_tmpXXXXXXXX");
   if (mkstemp(s) == -1)
@@ -493,6 +495,34 @@ static YAP_Bool p_tmpnam(void) {
   if (!(s = tmpnam(buf)))
     return FALSE;
   return YAP_Unify(YAP_ARG1, YAP_MkAtomTerm(YAP_LookupAtom(s)));
+#else
+  return FALSE;
+#endif
+}
+
+static YAP_Bool temp_file(void) {
+  char s[PATH_MAX+1];
+  strncpy(s,"/tmp/YAP_tmp_",PATH_MAX);
+  if (YAP_IsAtomTerm(YAP_ARG1)) {
+    strncat(s,YAP_AtomName(YAP_AtomOfTerm(YAP_ARG1)),PATH_MAX);
+  } else if (YAP_IsStringTerm(YAP_ARG1)) {
+    strncat(s,YAP_StringOfTerm(YAP_ARG1),PATH_MAX);
+  }
+  strncat(s, "_tmpXXXXXXXX",PATH_MAX);
+	  
+#if HAVE_MKSTEMP
+  if (mkstemp(s) == -1)
+    return FALSE;
+  return YAP_Unify(YAP_ARG2, YAP_MkAtomTerm(YAP_LookupAtom(s)));
+#elif HAVE_MKTEMP
+  if (!(s = mktemp(s)))
+    return (YAP_Unify(YAP_ARG3, YAP_MkIntTerm(errno)));
+  return YAP_Unify(YAP_ARG2, YAP_MkAtomTerm(YAP_LookupAtom(s)));
+#elif HAVE_TMPNAM
+  char *buf;
+  if (!(buf = tmpnam(s)))
+    return (YAP_Unify(YAP_ARG3, YAP_MkIntTerm(errno)));
+  return YAP_Unify(YAP_ARG2, YAP_MkAtomTerm(YAP_LookupAtom(s)));
 #else
   return FALSE;
 #endif
@@ -921,9 +951,9 @@ static YAP_Bool pid(void) {
 
 static YAP_Bool win(void) {
 #if defined(__MINGW32__) || _MSC_VER
-  return (TRUE);
+  return true;
 #else
-  return (FALSE);
+  return false;
 #endif
 }
 
@@ -954,7 +984,8 @@ static YAP_Bool p_kill(void) {
 #include <openssl/ripemd.h>
 #endif
 
-/** md5( +Text, -Key, -Remaining keyq
+/**
+ *  @pred md5( +Text, -Key, -Remainingkey)
  * encode text using OpenSSL
  *
  * arg Text is a List of ASCII codes
@@ -964,11 +995,11 @@ static YAP_Bool p_kill(void) {
  * @return whether ARG1's md5 unifies with the difference liat.
  */
 static YAP_Bool md5(void) {
-  unsigned char buf[64];
+  unsigned char buf[PATH_MAX];
   md5_state_t pms;
   const char *s;
   size_t len = -1;
-
+  
   if (!(s = YAP_StringToBuffer(YAP_ARG1, NULL, len)) || s[0] == 0)
     return false;
 
@@ -1025,6 +1056,7 @@ X_API void init_sys(void) {
   YAP_UserCPredicate("pid", pid, 2);
   YAP_UserCPredicate("kill", p_kill, 3);
   YAP_UserCPredicate("mktemp", p_mktemp, 3);
+  YAP_UserCPredicate("temp_file", temp_file, 3);
   YAP_UserCPredicate("tmpnam", p_tmpnam, 2);
   YAP_UserCPredicate("tmpdir", p_tmpdir, 2);
   YAP_UserCPredicate("rename_file", rename_file, 3);
@@ -1055,3 +1087,8 @@ int WINAPI win_sys(HANDLE hinst, DWORD reason, LPVOID reserved) {
   return 1;
 }
 #endif
+
+/** @} */
+ 
+
+ 

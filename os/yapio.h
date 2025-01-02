@@ -77,24 +77,13 @@ int beam_write(USES_REGS1) {
 
 #endif
 
-/* info on aliases */
+/** an alias as stored in the Aliases vector. */
 typedef struct AliasDescS {
   Atom name;
   int alias_stream;
 } * AliasDesc;
 
 #define MAX_ISO_LATIN1 255
-
-typedef struct scanner_extra_params {
-  Term tposINPUT, tposOUTPUT;
-  Term backquotes, singlequotes, doublequotes;
-  bool ce, vprefix, vn_asfl;
-    Term tcomms;       /// Access to comments
-    Term cmod;         /// Access to commen
-  bool store_comments; //
-  bool get_eot_blank;
-} scanner_params;
-
 /**
  *
  * @return a new VFS that will support /assets
@@ -103,10 +92,10 @@ typedef struct scanner_extra_params {
 extern struct vfs *Yap_InitAssetManager(void);
 
 /* routines in parser.c */
-extern VarEntry *Yap_LookupVar(const char *);
+extern VarEntry *Yap_LookupVar(const char *,int,int);
 extern Term Yap_VarNames(VarEntry *, Term);
 extern Term Yap_Variables(VarEntry *, Term);
-extern Term Yap_Singletons(VarEntry *, Term);
+extern Term Yap_Singletons(VarEntry *, bool, Term);
 
 /* routines in scanner.c */
 extern void Yap_clean_tokenizer(void);
@@ -135,7 +124,7 @@ extern int Yap_PlFGetchar(void);
 extern int Yap_GetCharForSIGINT(void);
 extern Int Yap_StreamToFileNo(Term);
 int Yap_OpenStream(Term tin, const char* io_mode, YAP_Term user_name, encoding_t enc);
-extern int Yap_FileStream(FILE *, Atom, Term, int, VFS_t *);
+extern int Yap_FileStream(FILE *, Atom, Term, estream_f, VFS_t *);
 extern char *Yap_TermToBuffer(Term t, int flags);
 extern char *Yap_HandleToString(yhandle_t l, size_t sz, size_t *length,
                                 encoding_t *encoding, int flags);
@@ -165,7 +154,7 @@ extern int Yap_FormatFloat(Float f, char **s, size_t sz);
 extern int Yap_open_buf_read_stream(void *st, const char *buf, size_t nchars,
                                     encoding_t *encp, memBufSource src,
                                     Atom name, Term uname);
-extern int Yap_open_buf_write_stream(encoding_t enc, memBufSource src);
+extern int Yap_open_buf_write_stream(int sno, encoding_t enc);
 extern Term Yap_BufferToTerm(const char *s, Term opts);
 
 extern X_API Term Yap_BufferToTermWithPrioBindings(const char *s, Term opts,
@@ -173,6 +162,7 @@ extern X_API Term Yap_BufferToTermWithPrioBindings(const char *s, Term opts,
                                                    int prio);
 extern FILE *Yap_GetInputStream(Term t, const char *m);
 extern FILE *Yap_GetOutputStream(Term t, const char *m);
+extern FILE *Yap_GetBinaryOutputStream(Term t, const char *m);
 extern Atom Yap_guessFileName( int sno, Atom n, Term un, size_t max);
 
 extern int Yap_CheckSocketStream(Term stream, const char *error);
@@ -207,7 +197,7 @@ extern uint64_t Yap_StartOfWTimes;
 
 extern bool Yap_HandleSIGINT(void);
 
-extern void Yap_plwrite(Term, struct stream_desc *, int[], CELL *, yhandle_t, write_flag_t, xarg *);
+extern void Yap_plwrite(Term, struct stream_desc *, CELL *, yhandle_t, write_flag_t, xarg *);
 
 
 #endif

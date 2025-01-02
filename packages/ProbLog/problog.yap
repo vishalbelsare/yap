@@ -206,6 +206,9 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+%% @file problog.yap
+%% @brief ProbLog-I main file.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % ProbLog inference
 %
@@ -227,11 +230,12 @@
 /**
 
 @defgroup YAP_ProbLog1 The Leuven ProbLog1 System
-@ingroup YAP_packages
+
+@{
 
 @brief This document is intended as a user guide for the users of ProbLog. ProbLog is a probabilistic Prolog, a probabilistic logic programming language, which is integrated in YAP-Prolog.
 
-## Installing ProbLog
+@addtogroup InstallingProbLog
 
 ### Requirements
 
@@ -256,6 +260,8 @@ You can also use the CUDD interface package in YAP. You will need to
 
 Last, when you configure YAP you need to add the options --with-cidd --enable-bddlib. Binary distributed versions already have the interface.
 
+@}
+
 ## Running ProbLog
 
 
@@ -267,11 +273,11 @@ To use ProbLog, the ProbLog module has to be loaded at the top of your Prolog pr
 
 Similarly, to compile the ProbLog learning module, use:
 ```
-:- use_module(library(problog_learning)).
+:- use_module(library(problog_learning_lbfgs)).
 ```
 or
 ```
-:- use_module(library(problog_learning_lbdd)).
+:- use_module(library(problog_learning_lbfgs)).
 ```
 
 ## Encoding Probabilistic Facts
@@ -300,7 +306,6 @@ In the description of the arguments of functors the following notation will be u
 + a preceding minus sign will denote an "output argument"
 + an argument with no preceding symbol can be used in both ways
 
-@{
 
 /**
  * @pred problog_max(+G, -Prob, -FactsUsed)
@@ -350,6 +355,18 @@ This predicate returns the lower bound of the probability of achieving the goal 
 @defgroup YAP_ProbLogParameterLearning ProbLog Parameter Learning Predicates
 @ingroup YAP_ProbLog1
 @{
+
+Instead of probabilities every fact has a t( ) prefix. The t stands for
+tunable and indicate that ProbLog should learn the probability. The
+number between the parentheses indicates the ground truth probability.
+It is ignored by the learning algorithm and if you do not know the
+ground truth, you can write t(_). The ground truth is used after
+learning to estimate the distance of the learned model parameters to the
+ground truth model parameters. For example:
+
+> t(0.5)::heads(1).
+
+
 */
 
 /**
@@ -387,9 +404,8 @@ Starts the learning algorithm. The learning will stop after N iterations or if t
 %% @}
 
 
-/** @defgroup YAP_ProbLogMiscellaneous ProbLog Miscellaneous Predicates
-@ingroup YAP_ProbLog1
-@{
+/** @addtogroup EncodingProbs@
+{
 
 
 Both the learning and the inference module have various parameters, or flags, that can be adjusted by the user.
@@ -714,7 +730,16 @@ The possible values for this flag are any number greater than zero.
                     problog_answers/2,
                     problog_kbest_answers/3,
                     problog_table/1,
-                    clear_retained_tables/0,
+       		    problog_lbdd/2,
+		    problog_lbdd/3,
+		    problog_lbdd/4,
+		    problog_lbdd_exact/2,
+		    problog_lbdd_exact_tree/2,
+		    problog_lbdd_kbest/3,
+		    problog_lbdd_kbest_tree/3,
+		    problog_lbdd_tree/2,
+		    problog_lbdd_tree/3,
+             clear_retained_tables/0,
                     problog_neg/1,
                     get_fact_probability/2,
                     set_fact_probability/2,
@@ -763,6 +788,10 @@ The possible values for this flag are any number greater than zero.
                     problog_infer_forest_supported/0,
                     problog_bdd_forest_supported/0,
                     problog_real_kbest/4,
+		    sigmoid/2,
+		    sigmoid/3,
+		    inv_sigmoid/2,
+		    inv_sigmoid/3,
                     op( 550, yfx, :: ),
                     op( 550, fx, ?:: ),
                     op(1149, yfx, <-- ),
@@ -772,24 +801,31 @@ The possible values for this flag are any number greater than zero.
                     above/2]).
 
 :- style_check(all).
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 
 % general yap modules
-:- reexport(library(lists), [append/3,member/2,memberchk/2,reverse/2,select/3,nth1/3,nth1/4,nth0/4,sum_list/2,max_list/2]).
+:- reexport(library(lists), [append/3,member/2,memberchk/2,reverse/2,select/3,nth1/3,nth1/4,nth0/4,sum_list/2,max_list/2,remove_duplicates/2,flatten/2]).
 :- use_module(library(terms), [variable_in_term/2,variant/2] ).
 :- use_module(library(random), [random/1]).
 :- use_module(library(system), [tmpnam/1,shell/2,delete_file/1]).
 :- use_module(library(ordsets), [list_to_ord_set/2, ord_insert/3, ord_union/3]).
 %Joris
 :- use_module(library(lineutils)).
+:- use_module(library(bdd)).
+:- use_module(library(tries)).
+:- use_module(library(trie_sp)).
 %Joris
 
+:- multifile (<--)/2.
+:- multifile myclause/1.
 
 % problog related modules
-:- reexport(problog_lbdd).
+:- include(problog_lbdd).
+:- include('problog/pbmath').
+:- use_module('problog/lbdd').
 :- use_module('problog/variables').
 :- use_module('problog/extlists').
-%:- use_module('problog/gflags').
+:- reexport('problog/gflags').
 :- reexport('problog/flags').
 :- reexport('problog/logger').
 :- use_module('problog/print').
@@ -849,6 +885,7 @@ The possible values for this flag are any number greater than zero.
 :- dynamic(problog_continuous_predicate/3).
 % global over all inference methods, exported
 :- dynamic(tunable_fact/2).
+:- dynamic(tunable_continuous_fact/2).
 :- dynamic(non_ground_fact/1).
 :- dynamic(continuous_fact/1).
 % global, manipulated via problog_control/2
@@ -896,7 +933,7 @@ The possible values for this flag are any number greater than zero.
 
 :- multifile(user:term_expansion/1).
 
-% directory where simplecudd executable is located
+%%> directory where simplecudd executable is located
 % automatically set during loading -- assumes it is in /usr/local/bin or same place where YAP has
 % been installed.)
 :- getcwd(PD0),
@@ -908,7 +945,7 @@ The possible values for this flag are any number greater than zero.
 
 
 
-%%%%%%%%%%%%
+%%>
 % iterative deepening on minimal probabilities (delta, max, kbest):
 % - first threshold (not in log-space as only used to retrieve argument for init_threshold/1, which is also used with user-supplied argument)
 % - last threshold to ensure termination in case infinite search space (saved also in log-space for easy comparison with current values during search)
@@ -921,8 +958,8 @@ The possible values for this flag are any number greater than zero.
 	problog_define_flag(id_stepsize,     problog_flag_validate_indomain_0_1_close, 'threshold shrinking factor iterative deepening', 0.5, inference, flags:id_stepsize_handler)
 )).
 
-%%%%%%%%%%%%
-% prune check stops derivations if they use a superset of facts already known to form a proof
+%%>
+% prunecheck stops derivations if they use a superset of facts already known to form a proof
 % (very) costly test, can be switched on/off here (This is obsolete as it is not included in implementation)
 %%%%%%%%%%%%
 
@@ -948,8 +985,7 @@ The possible values for this flag are any number greater than zero.
 % located in the directory given by problog_flag dir
 %%%%%%%%%%%%
 
-:- initialization((
-%	problog_define_flag(bdd_path,        problog_flag_validate_directory, 'simplecudd directory', '.',bdd),
+:- initialization((	problog_define_flag(bdd_path,        problog_flag_validate_directory, 'simplecudd directory', '.',bdd),
 	problog_define_flag(bdd_time,        problog_flag_validate_posint, 'BDD computation timeout in seconds', 60, bdd),
 	problog_define_flag(save_bdd,        problog_flag_validate_boolean, 'save BDD files for (last) lower bound', true, bdd),
 	problog_define_flag(dynamic_reorder, problog_flag_validate_boolean, 'use dynamic re-ordering for BDD', true, bdd),
@@ -997,8 +1033,8 @@ The possible values for this flag are any number greater than zero.
 %%%%%%%%%%%%
 % Default inference method
 %%%%%%%%%%%%
-
-:- initialization(problog_define_flag(inference,        problog_flag_validate_dummy, 'default inference method', exact, inference)).
+:
+- initialization(problog_define_flag(inference,        problog_flag_validate_dummy, 'default inference method', exact, inference)).
 
 %%%%%%%%%%%%
 % Tunable Facts
@@ -1081,6 +1117,7 @@ generate_atoms(N, A):-
 	generate_atoms(N, NA).
 
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % nice user syntax Prob::Fact
 % automatic translation to internal hardware access format
@@ -1123,7 +1160,7 @@ term_expansion_intern((Annotation :: Head :- Body), Module, problog:ExpandedClau
 	 ),
 	 copy_term((Head,Body),(HeadCopy,_BodyCopy)),
 	 functor(Head, Functor, Arity),
-	 atomic_concat([problog_,Functor],LongFunctor),
+	 atomic_concat(  [problog_,Functor],LongFunctor),
 	 Head =.. [Functor|Args],
 	 append(Args,[LProb],LongArgs),
 	 probclause_id(ID),
@@ -1469,6 +1506,9 @@ problog_predicate(Name, Arity, ProblogName,Mod) :-
 % Generating and storing the grounding IDs for
 % non-ground probabilistic facts
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+:- multifile user:ad_intern/3.
 
 :- multifile(user:problog_user_ground/1).
 user:problog_user_ground(Goal) :-
@@ -2085,7 +2125,7 @@ prune_check(Proof, Trie) :-
 % to call a ProbLog goal, patch all subgoals with the user's module context
 % (as logical part is there, but probabilistic part in problog)
 problog_call(Goal) :-
-	yap_flag(typein_module, Module),
+	current_prolog_flag(typein_module, Module),
 %%% if user provides init_db, call this before proving goal
 	(current_predicate(_,Module:init_db) -> call(Module:init_db); true),
 	put_module(Goal,Module,ModGoal),
@@ -3635,6 +3675,7 @@ change_par_file(ParFile,[not(ID)|Rest],ChangedParFile) :-
 % Copies a file
 copy_file(From,To) :-
 	file_filter(From,To,copy_aux).
+
 copy_aux(In,In).
 
 
@@ -4168,19 +4209,16 @@ signal_decision(ClauseID,GroundID) :-
 		bb_put(decisions,S2)
 	;
 		true
-	).
-
-				%
-				% ProbLog in-memory inference
-%:- start_low_level_trace.				%
-				%
-%:- stop_low_level_trace.				%
+	).				%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Term Expansion for user predicates
 % Must come after clauses for '::'/2 and term_expansion_intern/3
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+user:term_expansion(throw(Error),throw(user_error(Error,[]))) :-
+    functor(Error,error,_),
+    !.
 user:term_expansion(Term,ExpandedTerm) :-
 	Term \== end_of_file,
 	prolog_load_context(module,Mod),

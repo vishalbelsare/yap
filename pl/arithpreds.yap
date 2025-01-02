@@ -18,13 +18,13 @@
 /**
   @file arithpreds.yap
 
-  @addtogroup arithmetic Arithmetic Predicates and Functions
+  @addtogroup arithmetic_predicates
 
 @{
 
 */
    
-:- system_module(arithmetic_predicates, [
+:- system_module_(arithmetic_predicates, [
         plus/3,
         succ/2], []).
 

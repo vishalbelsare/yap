@@ -23,7 +23,6 @@
 
 '$init_consult' :-
 	set_prolog_flag(optimise, true ),
-	'$conditional_compilation_init',
 	nb_setval('$assert_all',off),
  	nb_setval('$initialization_goals',off),
 	nb_setval('$included_file',[]),
@@ -50,6 +49,7 @@
 	W1 is W-1,
 	'$start_orp_threads'(W1).
 
+
 '$version' :-
 	'$version_specs'(Specs),
 	print_message(informational, Specs).
@@ -67,9 +67,11 @@
   */
 init_prolog :-
     % do catch as early as possible
+    nb_setval('$spy_start',-1),
     '$init_consult',
     '$version',
-    set_prolog_flag(expand_file_name, true),
+    '$init_preds',
+    set_prolog_flag(open_expands_filename, true),
     set_prolog_flag(file_errors, false),
     set_prolog_flag(verbose_file_search, false),
 %    set_prolog_flag( source_mode, true),
@@ -98,7 +100,7 @@ init_prolog :-
     fail.
 '$startup_goals' :-
     recorded('$startup_goal',G,_),
-    catch(once(user:G),Error,user:'$Error'(Error)),
+    catch(once(user:G),_Error,error_handler),
     fail.
 		'$startup_goals' :-
 			get_value('$init_goal',GA),
@@ -115,7 +117,7 @@ init_prolog :-
 '$startup_goals' :-
     recorded('$restore_flag', goal(Module:GA), R),
     erase(R),
-    catch(once(Module:GA),Error,user:'$Error'(Error)),
+    catch(once(Module:GA),_Error,error_handler),
     fail.
 '$startup_goals' :-
 	get_value('$myddas_goal',GA), GA \= [],
@@ -146,7 +148,7 @@ init_prolog :-
     '__NB_getval__'('$top_level_goal',G,fail),
     G \= [],
     nb_setval('$top_level_goal',[]),
-    catch(once(G),Error,user:'$Error'(Error)),
+    catch(once(G),_Error,error_handler),
     fail.
 '$startup_goals'.
 
@@ -191,7 +193,7 @@ init_prolog :-
 '$init_from_saved_state_and_args' :-
 	recorded('$restore_flag', unknown(M:B), R),
 	erase(R),
-	yap_flag(M:unknown,B),
+	set_prolog_flag(M:unknown,B),
 	fail.
 '$init_from_saved_state_and_args' :-
 	'$startup_goals',

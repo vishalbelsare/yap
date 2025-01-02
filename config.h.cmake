@@ -41,6 +41,12 @@
 #cmakedefine THREADS  ${THREADS}
 #endif
 
+
+
+/* Are we compiling with support for threads? */
+#ifndef USE_THREADS
+#define USE_THREADS  THREADS
+#endif
 /* Are we compiling with support for clause just-in-time compilationT? */
 #ifndef YAP_JIT
 #cmakedefine YAP_JIT  "$YAP_JIT"
@@ -232,6 +238,16 @@ function. */
 /* Define to 1 if you have the <arpa/inet.h> header file. */
 #ifndef HAVE_ARPA_INET_H
 #cmakedefine HAVE_ARPA_INET_H ${HAVE_ARPA_INET_H}
+#endif
+
+/* Define to 1 if you have the `asinh' function. */
+#ifndef HAVE_ASSERT_H
+#cmakedefine HAVE_ASSERT_H ${HAVE_ASSERT_H}
+#endif
+
+/* Define to 1 if you have the `arc4random' function. */
+#ifndef HAVE_ARC4RANDOM
+#cmakedefine HAVE_ARC4RANDOM ${HAVE_ARC4RANDOM}
 #endif
 
 /* Define to 1 if you have the `asinh' function. */
@@ -540,6 +556,11 @@ function. */
 /* Define to 1 if you have the `gettimeofday' function. */
 #ifndef HAVE_GETTIMEOFDAY
 #cmakedefine HAVE_GETTIMEOFDAY ${HAVE_GETTIMEOFDAY}
+#endif
+
+/* Define to 1 if you have the `getpid' function. */
+#ifndef HAVE_GETTID
+#cmakedefine HAVE_GETTID ${HAVE_GETTID}
 #endif
 
 /* Define to 1 if you have the `getwd' function. */
@@ -1284,6 +1305,11 @@ signal. */
 /* Define to 1 if you have the `srandom' function. */
 #ifndef HAVE_SRANDOM
 #cmakedefine HAVE_SRANDOM ${HAVE_SRANDOM}
+#endif
+
+/* Define to 1 if you have the `srand48' function. */
+#ifndef HAVE_SRAND48
+#cmakedefine HAVE_SRAND48 ${HAVE_SRAND48}
 #endif
 
 /* Define to 1 if the system has the type `ssize_t'. */
@@ -2121,9 +2147,6 @@ calls it, or to nothing if 'inline' is not supported under any name.  */
 #endif
 #endif
 
-#ifndef HAVE_STRLCPY
-#define strlcpy(X,Y,Z) strcpy(X,Y)
-#endif
 
 //#define DEBUG_MALLOC 1
 #if DEBUG_MALLOC

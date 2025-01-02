@@ -14,9 +14,21 @@
  * comments:	very much machine dependent routines			 *
  *									 *
  *************************************************************************/
-#ifdef SCCS
-static char SccsId[] = "%W% %G%";
-#endif
+
+/**
+ * @file sysbits.c
+ * @brief  Operating System Interface
+ *
+ */
+
+/**
+ * @defgroup YAPOSVaria Operating System Interface
+ * @ingroup InputOutput
+ * @brief Operating Systems Interface Code.
+ * @{
+ */
+
+
 
 #include "sysbits.h"
 #include "cwalk.h"
@@ -104,7 +116,6 @@ bool Yap_Exists(const char *f) {
   return false;
 #endif
 }
-
 static int dir_separator(int ch) {
 #ifdef MAC
   return (ch == ':');
@@ -257,14 +268,32 @@ static bool initSysPath(Term tlib, Term tcommons, bool dir_done,
   return Yap_COMMONSDIR && Yap_unify(tcommons, MkAtomTerm(Yap_LookupAtom(Yap_COMMONSDIR)));
 }
 
+/**
+ * @pred libraries_directories(Dirs) }
+ *
+ * unify Dirs with the paths where YAP search for system libraries
+ *
+ */
 static Int libraries_directories(USES_REGS1) {
   return initSysPath(ARG1, ARG2, false, false);
 }
 
+/**
+ * @pred system_library(Dir) }
+ *
+ * unify Dir with the path for the main library.
+ *
+ */
 static Int system_library(USES_REGS1) {
   return initSysPath(ARG1, MkVarTerm(), false, true);
 }
 
+/**
+ * @pred commons_library(Dir) }
+ *
+ * unify Dir with the path for the commons library.
+ *
+ */
 static Int commons_library(USES_REGS1) {
   return initSysPath(MkVarTerm(), ARG1, true, false);
 }
@@ -379,10 +408,11 @@ static Int working_directory(USES_REGS1) {
   if (!IsAtomTerm(t2)) {
     Yap_ThrowError(TYPE_ERROR_ATOM, t2, "working_directory");
   }
-  if (t2 == TermEmptyAtom || t2 == TermDot) {
+  if (t2 == TermEmpty || t2 == TermDot) {
     pop_text_stack(l);
     return true;
   }
+  //  Yap_DebugPlWriteln(t2);
   Int rc = Yap_ChDir(RepAtom(AtomOfTerm(t2))->StrOfAE);
     pop_text_stack(l);
   return rc;
@@ -745,6 +775,9 @@ static Int p_host_type(USES_REGS1) {
   return (Yap_unify(out, ARG1));
 }
 
+/** @pred $yap_home(YapRoot)
+
+ */
 static Int p_yap_home(USES_REGS1) {
   Term out;
 
@@ -1017,9 +1050,14 @@ char *Yap_RegistryGetString(char *name) {
 
 #endif
 
- 
+/**
+ * sleep(Time)
+ *
+ * stop the process for Time seconds
+ *
+ */
 static Int p_sleep(USES_REGS1) {
-  Term ts = ARG1;
+  Term ts = Deref(ARG1);
 #if defined(__MINGW32__) || _MSC_VER
   {
     unsigned long int secs = 0, usecs = 0, msecs;
@@ -1045,7 +1083,7 @@ static Int p_sleep(USES_REGS1) {
     if (IsFloatTerm(ts)) {
       double tfl = FloatOfTerm(ts);
 
-      req.tv_nsec = (tfl - floor(tfl)) * 1000000000;
+      req.tv_nsec = (tfl*10E9 - floor(tfl)*10E9);
       req.tv_sec = rint(tfl);
     } else {
       req.tv_nsec = 0;
@@ -1065,7 +1103,7 @@ static Int p_sleep(USES_REGS1) {
       usecs = IntegrOfTerm(ts) * 1000000;
     }
     out = usleep(usecs);
-    return;
+    return true;
   }
 #elif HAVE_SLEEP
   {
@@ -1089,9 +1127,8 @@ static Int p_sleep(USES_REGS1) {
 #endif
 
 static Int
-  p_mtrace()
+  p_mtrace(USES_REGS1)
   {
-    CACHE_REGS
 #ifdef HAVE_MTRACE
     Term t = Deref(ARG1);
     if (t == TermTrue) mtrace();
@@ -1130,3 +1167,4 @@ void Yap_InitSysPreds(void) {
   Yap_InitCPred("mtrace", 1, p_mtrace, SyncPredFlag);
 }
    
+/// @}

@@ -259,11 +259,11 @@
 
 % switch on all tests to reduce bug searching time
 :- style_check(all).
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 
 % this is a test to determine whether YAP provides the needed trie library
 :- initialization(
-        (       predicate_property(trie_disable_hash, imported_from(tries)) ->
+        (       current_predicate(trie_disable_hash/0) ->
                 trie_disable_hash
         ;       print_message(warning,'The predicate tries:trie_disable_hash/0 does not exist. Please update trie library.')
         )
