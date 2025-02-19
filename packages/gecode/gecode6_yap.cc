@@ -16,6 +16,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //=============================================================================
 
+
+
 #include "gecode6-common.icc"
 #include <iostream>
 using namespace std;
@@ -1175,8 +1177,11 @@ return BOOL_VAL_RND(Rnd());
     YAP_Term arg2 = YAP_ARG2;
     GenericSpace* space = gecode_Space_from_term(arg1);
       YAP_Bool keeping = YAP_IntOfTerm(arg2);
-      if (keeping   )
+      if (keeping   ) {
+	if (!space->dock)
+	  space->dock = new LoadingDock();
       space->dock->keeping_some(  );
+      }
     return YAP_Unify(arg2,(YAP_MkIntTerm(gecode_FALSE)));
   }
 
@@ -2112,5 +2117,5 @@ return BOOL_VAL_RND(Rnd());
     YAP_UserCPredicate("gecode_floatvar_max", gecode_floatvar_max, 3);
     YAP_UserCPredicate("gecode_floatvar_med", gecode_floatvar_med, 3);
     YAP_UserCPredicate("gecode_floatvar_size", gecode_floatvar_size, 3);
-  }
+}
 }

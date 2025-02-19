@@ -23,6 +23,8 @@
 
 #include <Python.h>
 
+#include <frameobject.h>
+
 #include <Yap.h>
 
 
@@ -181,10 +183,28 @@ extern PyObject *py_Sys, *py_Builtins;
 
 extern bool set_item(YAP_Term yt, PyObject *o, PyObject *val, bool eval, bool cvt);
 
+inline static bool legal_symbol(const char *s) {
+  int ch;
+  while (((ch = *s++) != '\0')) {
+    if (isalnum(ch) || ch == '_')
+      continue;
+    return false;
+  }
+  return true;
+}
+
 extern X_API PyObject *py_OpMap;
 
 extern X_API bool python_in_python;
-extern bool pyStringToString;
+
+typedef enum pyst2pl {
+  PYSTRING2ATOM,
+  PYSTRING2CHARS,
+  PYSTRING2CODES,
+  PYSTRING2STRING
+} pyst2yap_t;
+
+  extern pyst2yap_t  pyStringToYAP;
 
 extern bool  python_release_GIL(term_t gstate);
 extern term_t python_acquire_GIL(void);
@@ -249,11 +269,10 @@ static inline PyObject *atom_to_python_string(term_t t) {
 }
 
 #define CHECK_CALL(ys, pArgs, pyDict)                                                \
-  rc = pyDict ==  NULL ?PyObject_CallObject(ys, pArgs) :\
-   PyObject_Call(ys, pArgs, pyDict);         \
-  if (rc == NULL || PyErr_Occurred()) {                                        \
+  PyErr_Clear();\
+  rc =  PyObject_Call(ys, pArgs, pyDict);				\
+  if (rc == NULL || PyErr_Occurred()) {                                        PyErr_Print();                                                             \
     YEC(ys, pArgs, pyDict, __LINE__, __FILE__, __FUNCTION__);                                   \
-    PyErr_Print();                                                             \
     PyErr_Clear();                                                             \
   }
 
@@ -295,13 +314,13 @@ extern void pyErrorHandler__(int line, const char *file, const char *code);
 #define PyStart()   PyErr_Clear()
 
 
-#define pyErrorHandler()                if (PyErr_Occurred()) {                                               \
+#define pyErrorHandler()                if (PyErr_Occurred()) {                                        PyErr_Print();       \
       pyErrorHandler__(__LINE__, __FILE__, __FUNCTION__);                      \
     }                                                                          \
 
 
 #define pyErrorAndReturn(x)                                                    \
-    { if (PyErr_Occurred()) {                                                    \
+  { if (PyErr_Occurred()) {PyErr_Print();				\
       pyErrorHandler__(__LINE__, __FILE__, __FUNCTION__);                      \
     }                                                                          \
     return (x); }                        
@@ -312,12 +331,9 @@ extern foreign_t assign_to_symbol(term_t t, PyObject *e);
 
 extern foreign_t python_builtin(term_t out);
 
-extern PyObject *lookupPySymbol(const char *s,size_t arity, PyObject *q, PyObject **d);
-
 extern install_t install_pypreds(void);
 extern install_t install_pl2pl(void);
 
-X_API extern bool init_python(void);
 X_API extern bool loadt_python(void);
 X_API extern bool do_init_python(void);
 
@@ -326,7 +342,7 @@ extern PyObject *find_term_obj(PyObject *ob, YAP_Term *yt, bool eval);
 
 extern PyObject *PythonLookup(const char *s, PyObject *o);
 
-extern PyObject *PythonLookupSpecial(const char *s);
+extern PyObject *assign_symbol(const char *s, PyObject *, PyObject *);
 
 
 X_API extern PyObject *yap_to_python(Term t, bool eval, PyObject *o, bool cvt);

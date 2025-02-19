@@ -18,7 +18,7 @@
 /**
  * @{
  * @defgroup Database The Clausal Data Base
- * @ingroup builtins
+ * @ingroup Builtins
 
 Predicates in YAP may be dynamic or static. By default, when
 consulting or reconsulting, predicates are assumed to be static:
@@ -36,7 +36,7 @@ and therefore he should try to avoid them whenever possible.
 
 */
 
-:- system_module( '$_preds', [abolish/1,
+:- system_module_( '$_preds', [abolish/1,
         abolish/2,
         assert/1,
         assert/2,
@@ -77,9 +77,7 @@ and therefore he should try to avoid them whenever possible.
         '$unknown_warning'/1]).
 
 :- use_system_module( '$_boot', ['$check_head_and_body'/4,
-        '$check_if_reconsulted'/2,
-        '$head_and_body'/3,
-        '$inform_as_reconsulted'/2]).
+        '$head_and_body'/2]).
 
 :- use_system_module( '$_errors', [throw_error/2]).
 
@@ -110,7 +108,7 @@ undefined results.
 */
 assert_static(MC) :-
     strip_module(MC, M, C),
-    '$compile'(C , assertz_static, C, M, 0, _ ).
+    '$compile'(C , assertz_static, C, M, 0, [] ).
 
 /** @pred  asserta_static(: _C_)
 
@@ -121,7 +119,7 @@ Adds clause  _C_ as the first clause for a static procedure.
 */
 asserta_static(MC) :-
     strip_module(MC, M, C),
-    '$compile'(C , asserta_static, C, M, 0, _ ).
+    '$compile'(C , asserta_static, C, M, 0, [] ).
 
 
 /** @pred  assertz_static(: _C_)
@@ -142,7 +140,7 @@ static predicates, if source mode was on when they were compiled:
 */
 assertz_static(MC) :-
     strip_module(MC, M, C),
-    '$compile'(C , assertz_static, C, M, 0, _ ).
+    '$compile'(C , assertz_static, C, M, 0, [] ).
 
 /** @pred  clause(+ _H_, _B_) is iso
 
@@ -153,13 +151,10 @@ program. Its head and body are respectively unified with  _H_ and
  _true_.
 
 This predicate is applicable to static procedures compiled with
-`source` active, and to all dynamic procedures.
-
-
-*/
+`source` active, and to all dynamic procedures.*/
 clause(V0,Q) :-
+    must_be_callable( V0 ),
     '$yap_strip_module'(V0, M, V),
-    must_be_of_type( callable, V ),
     '$predicate_type'(V,M,Type),
     '$clause'(Type,V,M,Q,_R).
 
@@ -184,13 +179,14 @@ clause(P,Q,R) :-
      M1:H1 = T
     ).
 clause(V0,Q,R) :-
-	'$imported_predicate'(V0,V),
-	'$predicate_type'(V,ExportingMod,Type),
-	'$clause'(Type,V,ExportingMod,Q,R).
+    '$imported_predicate'(V0,ExportingMod:V),
+    '$predicate_type'(V,ExportingMod,Type),
+    '$clause'(Type,V,ExportingMod,Q,R).
 
-'$clause'(exo_procedure,P,M,_Q,exo(P)) :-
-	'$execute0'(M:P).
-'$clause'(mega_procedure,P,M,_Q,mega(P)) :-
+
+'$clause'(exo_procedure,P,M,true,exo(P)) :-
+	'$execute0grep'(M:P).
+'$clause'(mega_procedure,P,M,true,mega(P)) :-
 	'$execute0'(M:P).
 '$clause'(updatable_procedure, P,M,Q,R) :-
 	'$log_update_clause'(P,M,Q,R).
@@ -202,26 +198,15 @@ clause(V0,Q,R) :-
 '$clause'(system_procedure,P,M,Q,R) :-
 	\+ '$undefined'(P,M),
 	functor(P,Name,Arity),
-	throw_error(permission_error(access,private_procedure,Name/Arity),
+	throw_error(permission_error(access,system_procedure,Name/Arity),
 	      clause(M:P,Q,R)).
 '$clause'(private_procedure,P,M,Q,R) :-
 	functor(P,Name,Arity),
 	throw_error(permission_error(access,private_procedure,Name/Arity),
 	      clause(M:P,Q,R)).
-'$clause'(static_procedure,P,M,Q,R) :-
-	functor(P,Name,Arity),
-	throw_error(permission_error(access,private_procedure,Name/Arity),
-	      clause(M:P,Q,R)).
-'$clause'(undefined,P,M,Q,R) :-
-	functor(P,Name,Arity),
-	throw_error(permission_error(access,private_procedure,Name/Arity),
-	      clause(M:P,Q,R)).
-
+				    
 '$init_preds' :-
 	once('$do_static_clause'(_,_,_,_,_)),
-	fail.
-'$init_preds' :-
-	once('$do_log_upd_clause0'(_,_,_,_,_,_)),
 	fail.
 '$init_preds' :-
 	once('$do_log_upd_clause'(_,_,_,_,_,_)),
@@ -229,10 +214,7 @@ clause(V0,Q,R) :-
 '$init_preds' :-
 	once('$do_log_upd_clause_erase'(_,_,_,_,_,_)),
 	fail.
-    
 '$init_preds'.
-
-:- '$init_preds'.
 
 /** @pred  nth_clause(+ _H_, _I_,- _R_)
 
@@ -245,7 +227,7 @@ and  _I_ is bound to its position.
 
 */
 nth_clause(V,I,R) :-
-	'$imported_predicate'(V:M2:P2),
+	'$imported_predicate'(V,M2:P2),
 	'$nth_clause'(P2, M2, I, R).
 
 
@@ -264,9 +246,10 @@ including whether it is dynamic or static, multifile, or
 meta-predicate, will be lost.
 */
 abolish(N0,A) :-
-	strip_module(N0, Mod, N), !,
-	must_bind_to_type( predicate_indicator, N ),
-	'$abolish'(N,A,Mod).
+    must_be_of_type(integer,A),
+    strip_module(N0, Mod, N), !,
+    must_be_atom(N),
+    '$abolish'(N,A,Mod).
 
 '$abolish'(N,A,M) :-
 	( recorded('$predicate_defs','$predicate_defs'(N,A,M,_),R) -> erase(R) ),
@@ -288,79 +271,25 @@ dynamic procedures. Under other modes it will abolish any procedures.
 
 */
 abolish(X0) :-
-	strip_module(X0,M,X),
-	'$abolish'(X,M).
+    current_prolog_flag(language,iso), !,
+    must_be_predicate_indicator(X0,M,N,A),
+    '$new_abolish'(N,A,M).
+abolish(X0) :-
+    strip_module(X0,M,X),
+    '$old_abolish'(X,M).
 
-'$abolish'(X,M) :-
-	current_prolog_flag(language,iso), !,
-	'$new_abolish'(X,M).
-'$abolish'(X, M) :-
-	'$old_abolish'(X,M).
-
-'$new_abolish'(V,M) :- var(V), !,
-	throw_error(instantiation_error,abolish(M:V)).
-'$new_abolish'(A/V,M) :- atom(A), var(V), !,
-	throw_error(instantiation_error,abolish(M:A/V)).
-'$new_abolish'(Na//Ar1, M) :-
-	integer(Ar1),
-	!,
-	Ar is Ar1+2,
-	'$new_abolish'(Na//Ar, M).
-'$new_abolish'(Na/Ar, M) :-
+'$new_abolish'(Na,Ar, M) :-
 	functor(H, Na, Ar),
 	'$is_dynamic'(H, M), !,
 	'$abolishd'(H, M).
-'$new_abolish'(Na/Ar, M) :- % succeed for undefined procedures.
+'$new_abolish'(Na,Ar, M) :- % succeed for undefined procedures.
 	functor(T, Na, Ar),
 	'$undefined'(T, M), !.
-'$new_abolish'(Na/Ar, M) :-
+'$new_abolish'(Na,Ar, M) :-
 	throw_error(permission_error(modify,static_procedure,Na/Ar),abolish(M:Na/Ar)).
-'$new_abolish'(T, M) :-
-	throw_error(type_error(predicate_indicator,T),abolish(M:T)).
+'$new_abolish'(Na,Ar, M) :-
+    throw_error(type_error(predicate_indicator,Na/Ar),abolish(M:Na/Ar)).
 
-'$abolish_all'(M) :-
-        '$current_predicate'(Na, M, S, _),
-        functor(S, Na, Ar),
-	'$new_abolish'(Na/Ar, M),
-	fail.
-'$abolish_all'(_).
-
-'$abolish_all_atoms'(Na, M) :-
-        '$current_predicate'(Na,M,S,_),
-        functor(S, Na, Ar),
-	'$new_abolish'(Na/Ar, M),
-	fail.
-'$abolish_all_atoms'(_,_).
-
-'$check_error_in_predicate_indicator'(V, Msg) :-
-	var(V), !,
-	throw_error(instantiation_error, Msg).
-'$check_error_in_predicate_indicator'(M:S, Msg) :- !,
-	'$check_error_in_module'(M, Msg),
-	'$check_error_in_predicate_indicator'(S, Msg).
-'$check_error_in_predicate_indicator'(S, Msg) :-
-	S \= _/_,
-	S \= _//_, !,
-	throw_error(type_error(predicate_indicator,S), Msg).
-'$check_error_in_predicate_indicator'(Na/_, Msg) :-
-	var(Na), !,
-	throw_error(instantiation_error, Msg).
-'$check_error_in_predicate_indicator'(Na/_, Msg) :-
-	\+ atom(Na), !,
-	throw_error(type_error(atom,Na), Msg).
-'$check_error_in_predicate_indicator'(_/Ar, Msg) :-
-	var(Ar), !,
-	throw_error(instantiation_error, Msg).
-'$check_error_in_predicate_indicator'(_/Ar, Msg) :-
-	\+ integer(Ar), !,
-	throw_error(type_error(integer,Ar), Msg).
-'$check_error_in_predicate_indicator'(_/Ar, Msg) :-
-	Ar < 0, !,
-	throw_error(domain_error(not_less_than_zero,Ar), Msg).
-% not yet implemented!
-%'$check_error_in_predicate_indicator'(Na/Ar, Msg) :-
-%	Ar < maxarity, !,
-%	throw_error(representation_error(max_arity,Ar), Msg).
 
 '$check_error_in_module'(M, Msg) :-
 	var(M), !,
@@ -370,37 +299,25 @@ abolish(X0) :-
 	throw_error(type_error(atom,M), Msg).
 
 '$old_abolish'(V,M) :- var(V), !,
-	( true -> % current_prolog_flag(language, sicstus) ->
+         % current_prolog_flag(language, sicstus) ->
 	    throw_error(instantiation_error,abolish(M:V))
-	;
-	    '$abolish_all_old'(M)
-	).
+	%;
+	%    '$abolish_all_old'(M)
+	%)
+	.
 '$old_abolish'(N/A, M) :- !,
 	'$abolish'(N, A, M).
 '$old_abolish'(A,M) :- atom(A), !,
-	( current_prolog_flag(language, iso) ->
+	%( current_prolog_flag(language, iso) ->
 	  throw_error(type_error(predicate_indicator,A),abolish(M:A))
-	;
-	    '$abolish_all_atoms_old'(A,M)
-	).
+	%;
+	%    '$abolish_all_atoms_old'(A,M)
+	%)
+	.
 '$old_abolish'([], _) :- !.
 '$old_abolish'([H|T], M) :- !,  '$old_abolish'(H, M), '$old_abolish'(T, M).
 '$old_abolish'(T, M) :-
 	throw_error(type_error(predicate_indicator,T),abolish(M:T)).
-
-'$abolish_all_old'(M) :-
-        '$current_predicate'(Na, M, S, _),
-	functor( S, Na, Ar ),
-	'$abolish'(Na, Ar, M),
-	fail.
-'$abolish_all_old'(_).
-
-'$abolish_all_atoms_old'(Na, M) :-
-        '$current_predicate'(Na, M, S, _),
-	functor(S, Na, Ar),
-	'$abolish'(Na, Ar, M),
-	fail.
-'$abolish_all_atoms_old'(_,_).
 
 '$abolishs'(G, M) :- '$is_system_predicate'(G,M), !,
 	functor(G,Name,Arity),
@@ -418,21 +335,17 @@ abolish(X0) :-
 '$abolishs'(_, _).
 
 /**  @pred stash_predicate(+ _Pred_)
-Make predicate  _Pred_ invisible to new code, and to `current_predicate/2`,
+Make predicate  _Pred_ invisible to new code, and to current_predicate/2,
 `listing`, and friends. New predicates with the same name and
 functor can be declared.
  **/
 stash_predicate(P0) :-
-	strip_module(P0, M, P),
-	'$stash_predicate2'(P, M).
+    must_be_predicate_indicator(P0,M,N,A),
+    '$stash_predicate2'(N,A, M).
 
-'$stash_predicate2'(V, M) :- var(V), !,
-	throw_error(instantiation_error,stash_predicate(M:V)).
-'$stash_predicate2'(N/A, M) :- !,
+'$stash_predicate2'(N,A, M) :- !,
 	functor(S,N,A),
 	'$stash_predicate'(S, M) .
-'$stash_predicate2'(PredDesc, M) :-
-	throw_error(type_error(predicate_indicator,PredDesc),stash_predicate(M:PredDesc)).
 
 /** @pred hide_predicate(+ _Pred_)
 Make predicate  _Pred_ invisible to `current_predicate/2`,
@@ -462,9 +375,11 @@ true if the predicate has a meta_predicate declaration  _M_.
 + `multifile `
 true if the predicate was declared to be multifile
 
-+ `
-imported_from( _Mod_) `
++ `imported_from( _Mod_) `
 true if the predicate was imported from module  _Mod_.
+
++ `file(_File_) `
+true if the predicate was declared in file  _File_. Unavailable for multi-file predicates.
 
 + `exported `
 true if the predicate is exported in the current module.
@@ -486,66 +401,81 @@ or built-in.
 
 */
 predicate_property(Pred,Prop) :-
-    (var(Pred)
-    ->
-	Pred = M:P
-    ;
-    '$yap_strip_module'(Pred, M, P)
-    ),
+    '$yap_strip_module'(Pred, M, P),
     (var(M)
     ->
 	'$all_current_modules'(M)
        ;
-       (M= MF
-       ;
-	 M \= prolog, MF=prolog)
+      true
     ),
     (var(P) %
     ->
-	'$current_predicate'(_Na,MF,P,_)
+    module_predicate(M,N,Ar,_),
+      functor(P,N,Ar)
     ;
     true
     ),
     (
-	'$is_proxy_predicate'(P,MF)
+    '$pred_exists'(P,prolog)
     ->
-	'$import_chain'(MF,P,MF0,P0),
-	'$pred_exists'(P0,MF0),
-	(
-	    Prop = imported_from(MF0)
-	;
-	'$predicate_property'(P0,MF0,Prop)
-	)
+	'$predicate_property'(P,prolog,Prop)
     ;
-    '$predicate_property'(P,MF,Prop)
+      '$is_proxy_predicate'(P,M)
+      ->
+(
+	'$import_chain'(M,P,M0,P0),
+      '$pred_exists'(P0,M0),
+      (Prop = imported_from(M0)
+	;
+	'$predicate_property'(P0,M0,Prop)
+      )
+)
+    ;
+    '$predicate_property'(P,M,Prop)
     ).
 
-'$predicate_property'(P,_M,built_in) :-
-	'$is_system_predicate'(P,prolog).
+'$predicate_property'(P,M,meta_predicate(Q)) :-
+    functor(P,Na,Ar),
+    functor(Q,Na,Ar),
+    recorded('$m', meta_predicate(M,Q),_).
+'$predicate_property'(P,M,Prop) :-
+    '$predicate_type'(P,M,Type),
+    (Type == undefined -> !,fail;
+     Type == system_procedure -> Prop=built_in;
+     Type == updatable_procedure ->
+	 (
+	     Prop=dynamic
+		 ;
+		 Prop = source
+		 ;
+		 '$is_thread_local'(P,M)
+		 ->
+		 Prop = (thread_local)
+	 )
+     ;
+     (
+	 Prop=static
+     ;
+     Type == mega_procedure -> Prop=mega
+     
+     )
+    ).
 
+'$predicate_property'(P,M,file(File)) :-
+    \+ '$is_multifile'(P, M),
+    M\=prolog,
+    '$owner_file'(P,M,File).
+'$predicate_property'(P,M,line_count(Line)) :-
+    M\=prolog,
+    '$owner_file_line'(P,M,Line).
+'$predicate_property'(P,M,multifile) :-
+	'$is_multifile'(P,M).
 '$predicate_property'(P,M,source) :-
 	'$has_source'(P,M).
 '$predicate_property'(P,M,tabled) :-
     '$is_tabled'(P,M).
-'$predicate_property'(P,M,dynamic) :-
-	'$is_dynamic'(P,M).
-'$predicate_property'(P,M,static) :-
-	\+ '$is_dynamic'(P,M),
-	\+ '$undefined'(P,M).
-'$predicate_property'(P,M,meta_predicate(Q)) :-
-	functor(P,Na,Ar),
-	functor(Q,Na,Ar),
-	recorded('$m', meta_predicate(M,Q),_).
-'$predicate_property'(P,M,multifile) :-
-	'$is_multifile'(P,M).
 '$predicate_property'(P,M,public) :-
 	'$is_public'(P,M).
-'$predicate_property'(P,M,thread_local) :-
-	'$is_thread_local'(P,M).
-'$predicate_property'(P,M,exported) :-
-	functor(P,N,A),
-	once('$module'(_TFN,M,Publics,_L)),
-	'$memberchk'(N/A,Publics).
 '$predicate_property'(P,Mod,number_of_clauses(NCl)) :-
     '$number_of_clauses'(P,Mod,
 			 NCl).
@@ -598,76 +528,71 @@ predicate_erased_statistics(P0,NCls,Sz,ISz) :-
 Defines the relation:  _P_ is a currently defined predicate whose name is the atom  _A_.
 */
 current_predicate(A,T0) :-
-	'$yap_strip_module'(T0, M, T),
-	( var(M) -> '$all_current_modules'(M) ; true ),
-	(nonvar(T) -> functor(T, A, _) ; true ),
-	 '$current_predicate'(A,M, T, user).
+    '$yap_strip_module'(T0, M, T),
+    (var(M) -> '$all_current_modules'(M);  must_be_atom(M)),
+    (nonvar(T) ->
+	functor(T,A,Ar),
+        functor_predicate(M,A,Ar,user)
+    ;atom(A) ->
+    atom_functor(A,Ar),
+    functor(T,A,Ar),
+    functor_predicate(M,A,Ar,user)
+    ;
+    module_predicate(M,A,Ar,user),
+    functor(T,A,Ar)
+    ).
+
+:- meta_predicate system_predicate(:), system_predicate(?,:).
+
 
 /** @pred  system_predicate( ?_P_ )
 
 Defines the relation:  indicator _P_ refers to a currently defined system predicate.
 */
-system_predicate(P0) :-
-	'$yap_strip_module'(P0, M0, P),
-    ( M= M0 ; M0 \= user, M = user ; M0 \= prolog, M = prolog ),
+system_predicate(T0) :-
+    '$yap_strip_module'(T0, M, T),    
+    (      var(M) -> '$all_current_modules'(M);  must_be_atom(M)
+    ),
     (
-      var(P)
-    ->
-      P = A/Arity,
-     '$current_predicate'(A, M, T, system),
-     functor(T, A, Arity),
-     '$is_system_predicate'( T,  M)
+      var(T) -> module_predicate(_,A,Ar,system)
+	;
+	T = A//Ar, nonvar(A) ->
+	atom_functor(A,Ar),
+	functor_predicate(M,A,Ar0,system),
+	Ar is Ar0+2
     ;
-      ground(P), P = A/Arity
-    ->
-     functor(T, A, Arity),
-     '$current_predicate'(A, M, T, system),
-     '$is_system_predicate'( T, M)
-    ;
-      ground(P), P = A//Arity2
-    ->
-     Arity is Arity2+2,
-     functor(T, A, Arity),
-     '$current_predicate'(A, M, T, system),
-     '$is_system_predicate'( T, M)
-    ;
-     P = A/Arity
-    ->
-     '$current_predicate'(A, M, T, system),
-     '$is_system_predicate'( T,  M),
-     functor(T, A, Arity)
-    ;
-     P = A//Arity2
-    ->
-     '$current_predicate'(A, M, T, system),
-     '$is_system_predicate'( T,  M),
-     functor(T, A, Arity),
-     Arity >= 2,
-     Arity2 is Arity-2
-    ;
-    throw_error(type_error(predicate_indicator,P),
-                system_predicate(P0))
+    T = A/Ar, nonvar(A) -> 
+	atom_functor(A,Ar),
+	functor_predicate(M,A,Ar,system);
+	throw_error(type_error(predicate_indicator,T),
+                system_predicate(T))
     ).
+
+
 
 /** @pred  system_predicate( ?A, ?P )
 
-  Succeeds if _A_ is the name of the system predicate _P_. It can be used to test and to enumerate all system predicates.
-
-  YAP also supports the ISO standard built-in system_predicate/1, that
-  provides similar functionality and is compatible with most other Prolog
-  systems.
-
+  Succeeds if _A_ is the name of the system predicate _P_. It can be
+  used to test or  to enumerate all system predicates.
 */
+
 system_predicate(A, P0) :-
-	'$yap_strip_module'(P0, M, P),
+    may_bind_to_type(atom,A),
+    may_bind_to_type(callable,P0),
+    '$yap_strip_module'(P0, M, P),
+
     (
-      nonvar(P)
-    ->
-     '$current_predicate'(A, M, P, system),
-     '$is_system_predicate'( P,  M)
+	nonvar(P)
+	  ->
+	  functor(P,N,A),
+	  functor_predicate(M,N,A,system)
     ;
-     '$current_predicate'(A, M, P, system)
+    (      var(M) -> '$all_current_modules'(M);  must_be_atom(M)),
+    module_predicate(A, Na, Ar, system),
+	  functor(P,Na,Ar)
     ).
+
+    
 
 
 /**
@@ -678,46 +603,32 @@ system_predicate(A, P0) :-
   where the atom _Mod_ is the module of the predicate,
  _Na_ is the name of the predicate, and  _Ar_ its arity.
 */
-current_predicate(F0) :-
-	'$yap_strip_module'(F0, M, F),
-	must_bind_to_type( predicate_indicator, F ),
-	'$c_i_predicate'( F, M ).
-
-'$c_i_predicate'( A/N, M ) :-
-	!,
-	(
-	 ground(A/N)
-	->
-	 atom(A), integer(N),
-	 functor(S, A, N),
-	 current_predicate(A, M:S)
+current_predicate(T0) :-
+    '$yap_strip_module'(T0, M, T),
+    (
+      var(M) -> '$all_current_modules'(M)
 	;
-	 current_predicate(A, M:S),
-	 functor(S, A, N)
-	 ).
-'$c_i_predicate'( A//N, M ) :-
-	(
-	 ground(A)
-	->
-	 atom(A), integer(N),
-	 N2 is N+2,
-	 functor(S, A, N2),
-	 current_predicate(A, M:S)
-	;
-	 current_predicate(A, M:S),
-	 functor(S, A, N2),
-	 N is N2-2
-	).
+	must_be_atom(M)
+    ),
+    (
+	T=A/Ar, var(A) ->
+	module_predicate(M,A,Ar,user)
+    ;
+    T = A//Ar, var(A) ->
+  	module_predicate(M,A,Ar0,user),
+     Ar is Ar0+2
+;
+    T = A/Ar, nonvar(A) -> atom_functor(A,Ar),
+    functor_predicate(M,A,Ar,user)
 
-/** @pred  current_key(? _A_,? _K_)
-
-
-Defines the relation:  _K_ is a currently defined database key whose
-name is the atom  _A_. It can be used to generate all the keys for
-  the internal data-base.
-*/
-current_key(A,K) :-
-	'$current_predicate'(A,idb,K,user).
+    ;
+    T = A//Ar, nonvar(A) -> atom_functor(A,Ar),
+	  functor_predicate(M,A,Ar0,user),
+	  Ar is Ar0-2
+    ;
+    error(type_error(predicate_indicator,T),
+               current_predicate(T))
+   ).
 
 % do nothing for now.
 '$noprofile'(_, _).
@@ -739,7 +650,7 @@ assert/1 into normal static predicates. This call tells the
 Prolog environment the definition will not change anymore and further
 calls to assert/1 or retract/1 on the named predicates
 raise a permission error. This predicate is designed to deal with parts
-of the program that is generated at runtime but does not change during
+ the program that is generated at runtime but does not change during
 the remainder of the program execution.
  */
 compile_predicates(Ps) :-
@@ -776,7 +687,13 @@ compile_predicates(Ps) :-
 clause_property(ClauseRef, file(FileName)) :-
 	instance_property(ClauseRef, 2, FileName).
 clause_property(ClauseRef, source(FileName)) :-
-	instance_property(ClauseRef, 2, FileName ).
+    instance_property(ClauseRef, 2, SourceName ),
+    ( recorded('$includes',(FileName->SourceName), _) 
+    ->
+    true
+    ;
+    FileName = SourceName
+    ).
 clause_property(ClauseRef, line_count(LineNumber)) :-
 	instance_property(ClauseRef, 4, LineNumber),
 	LineNumber > 0.

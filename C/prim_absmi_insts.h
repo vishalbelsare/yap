@@ -1,5 +1,5 @@
 /************************************************************************ \
- *    Basic Primitive Predicates                                       *
+ *    Basicc Primitive Predicates                                       *
 \************************************************************************/
 
 #ifdef INDENT_CODE
@@ -897,6 +897,141 @@
       ENDD(d0);
       ENDOp();
 
+      Op(p_xor_vv, xxx);
+      BEGD(d0);
+      BEGD(d1);
+      d0 = XREG(PREG->y_u.xxx.x1);
+      /* first check pt1 */
+      deref_head(d0, xor_vv_unk);
+    xor_vv_nvar:
+      d1 = XREG(PREG->y_u.xxx.x2);
+      /* next check A2 */
+      deref_head(d1, xor_vv_nvar_unk);
+    xor_vv_nvar_nvar:
+      /* d0 and d1 are where I want them */
+      if (IsIntTerm(d0) && IsIntTerm(d1)) {
+        d0 = MkIntegerTerm(IntOfTerm(d0) ^ IntOfTerm(d1));
+      } else {
+        saveregs();
+        d0 = p_xor(Yap_Eval(d0), Yap_Eval(d1) PASS_REGS);
+        setregs();
+      }
+      XREG(PREG->y_u.xxx.x) = d0;
+      PREG = NEXTOP(PREG, xxx);
+      GONext();
+
+      BEGP(pt0);
+      deref_body(d0, pt0, xor_vv_unk, xor_vv_nvar);
+      Yap_AsmError(INSTANTIATION_ERROR,d0);
+      FAIL();
+      ENDP(pt0);
+
+      BEGP(pt0);
+      deref_body(d1, pt0, xor_vv_nvar_unk, xor_vv_nvar_nvar);
+      Yap_AsmError(INSTANTIATION_ERROR,d1);
+      FAIL();
+      ENDP(pt0);
+      ENDD(d1);
+      ENDD(d0);
+      ENDOp();
+
+      Op(p_xor_vc, xxn);
+      BEGD(d0);
+      d0 = XREG(PREG->y_u.xxn.xi);
+      /* first check pt1 */
+      deref_head(d0, xor_vc_unk);
+    xor_vc_nvar : {
+      Int d1 = PREG->y_u.xxn.c;
+      if (IsIntTerm(d0)) {
+        d0 = MkIntegerTerm(IntOfTerm(d0) ^ d1);
+      } else {
+        saveregs();
+        d0 = p_xor(Yap_Eval(d0), MkIntegerTerm(d1) PASS_REGS);
+      }
+    }
+      XREG(PREG->y_u.xxn.x) = d0;
+      PREG = NEXTOP(PREG, xxn);
+      GONext();
+
+      BEGP(pt0);
+      deref_body(d0, pt0, xor_vc_unk, xor_vc_nvar);
+      Yap_AbsmiError(INSTANTIATION_ERROR);
+      FAIL();
+      ENDP(pt0);
+      ENDD(d0);
+      ENDOp();
+
+      Op(p_xor_y_vv, yxx);
+      BEGD(d0);
+      BEGD(d1);
+      d0 = XREG(PREG->y_u.yxx.x1);
+      /* first check pt1 */
+      deref_head(d0, xor_y_vv_unk);
+    xor_y_vv_nvar:
+      d1 = XREG(PREG->y_u.xxx.x2);
+      /* next check A2 */
+      deref_head(d1, xor_y_vv_nvar_unk);
+    xor_y_vv_nvar_nvar:
+      /* d0 and d1 are where I want them */
+      if (IsIntTerm(d0) && IsIntTerm(d1)) {
+        d0 = MkIntegerTerm(IntOfTerm(d0) ^ IntOfTerm(d1));
+      } else {
+        saveregs();
+        d0 = p_xor(Yap_Eval(d0), Yap_Eval(d1) PASS_REGS);
+        setregs();
+      }
+      BEGP(pt0);
+      pt0 = YREG + PREG->y_u.yxx.y;
+      PREG = NEXTOP(PREG, yxx);
+      INITIALIZE_PERMVAR(pt0, d0);
+      ENDP(pt0);
+      GONext();
+
+      BEGP(pt0);
+      deref_body(d0, pt0, xor_y_vv_unk, xor_y_vv_nvar);
+      Yap_AsmError(INSTANTIATION_ERROR,d0);
+      FAIL();
+      ENDP(pt0);
+
+      BEGP(pt0);
+      deref_body(d1, pt0, xor_y_vv_nvar_unk, xor_y_vv_nvar_nvar);
+      Yap_AsmError(INSTANTIATION_ERROR,d1);
+      FAIL();
+      ENDP(pt0);
+      ENDD(d1);
+      ENDD(d0);
+      ENDOp();
+
+      Op(p_xor_y_vc, yxn);
+      BEGD(d0);
+      d0 = XREG(PREG->y_u.yxn.xi);
+      /* first check pt1 */
+      deref_head(d0, xor_y_vc_unk);
+    xor_y_vc_nvar : {
+      Int d1 = PREG->y_u.yxn.c;
+      if (IsIntTerm(d0)) {
+        d0 = MkIntegerTerm(IntOfTerm(d0) ^ d1);
+      } else {
+        saveregs();
+        d0 = p_xor(Yap_Eval(d0), MkIntegerTerm(d1) PASS_REGS);
+        setregs();
+      }
+    }
+      BEGP(pt0);
+      pt0 = YREG + PREG->y_u.yxn.y;
+      PREG = NEXTOP(PREG, yxn);
+      INITIALIZE_PERMVAR(pt0, d0);
+      ENDP(pt0);
+      GONext();
+
+      BEGP(pt0);
+      deref_body(d0, pt0, xor_y_vc_unk, xor_y_vc_nvar);
+      Yap_AbsmiError(INSTANTIATION_ERROR);
+      FAIL();
+      ENDP(pt0);
+      ENDD(d0);
+      ENDOp();
+
       Op(p_sll_vv, xxx);
       BEGD(d0);
       BEGD(d1);
@@ -1050,7 +1185,7 @@
     sll_y_vc_nvar : {
       Int d1 = PREG->y_u.yxn.c;
       if (IsIntTerm(d0)) {
-        d0 = do_sll(IntOfTerm(d0), Yap_Eval(d1) PASS_REGS);
+        d0 = do_sll(IntOfTerm(d0), d1  PASS_REGS);
       } else {
         saveregs();
         d0 = p_sll(Yap_Eval(d0), MkIntegerTerm(d1) PASS_REGS);
@@ -1087,7 +1222,7 @@
           d0 = do_sll(d1, i2 PASS_REGS);
       } else {
         saveregs();
-        d0 = p_sll(MkIntegerTerm(d1), Yap_Eval(0) PASS_REGS);
+        d0 = p_sll(MkIntegerTerm(d1), MkIntTerm(0) PASS_REGS);
         setregs();
       }
     }
@@ -1963,20 +2098,25 @@
       }
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
+Int i;
       d0 = XREG(PREG->y_u.xxx.x1);
       deref_head(d0, arg_arg1_unk);
     arg_arg1_nvar:
       /* ARG1 is ok! */
       if (IsIntTerm(d0))
-        d0 = IntOfTerm(d0);
+        i = IntOfTerm(d0);
       else if (IsLongIntTerm(d0)) {
-        d0 = LongIntOfTerm(d0);
+        i = LongIntOfTerm(d0);
       } else {
         if (IsBigIntTerm(d0))
           FAIL();
         Yap_AsmError(TYPE_ERROR_INTEGER, d0);
         FAIL();
       }
+if (i<0) {
+  Yap_AsmError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO, d0);
+  FAIL();
+}
 
       /* d0 now got the argument we want */
       BEGD(d1);
@@ -1993,31 +2133,20 @@
           Yap_AsmError(TYPE_ERROR_COMPOUND, AbsAppl(pt0));
           FAIL();
         }
-        if ((Int)d0 <= 0 || (Int)d0 > ArityOfFunctor((Functor)d1)) {
-          /* don't complain here for Prolog compatibility
-             if ((Int)d0 <= 0) {
-             saveregs();
-Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
-             MkIntegerTerm(d0),"arg 1 of arg/3");
-             setregs();
-             }
-          */
-          FAIL();
-        }
-        XREG(PREG->y_u.xxx.x) = pt0[d0];
+	if (i==0 ||i > ArityOfFunctor((Functor)d1)) {
+	  FAIL();
+	}
+        XREG(PREG->y_u.xxx.x) = pt0[i];
         PREG = NEXTOP(PREG, xxx);
         GONext();
         ENDP(pt0);
       } else if (IsPairTerm(d1)) {
         BEGP(pt0);
         pt0 = RepPair(d1);
-        if (d0 != 1 && d0 != 2) {
-          if ((Int)d0 < 0) {
-              Yap_AsmError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO, MkIntegerTerm(d0)                                                                                                                 );
-          }
+        if (i != 1 && i != 2) {
           FAIL();
         }
-        XREG(PREG->y_u.xxx.x) = pt0[d0 - 1];
+        XREG(PREG->y_u.xxx.x) = pt0[i - 1];
         PREG = NEXTOP(PREG, xxx);
         GONext();
         ENDP(pt0);
@@ -2078,7 +2207,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
           Yap_AsmError(TYPE_ERROR_COMPOUND,XREG(PREG->y_u.xxn.xi));
           FAIL();
         }
-        if ((Int)d0 <= 0 || (Int)d0 > ArityOfFunctor((Functor)d1)) {
+        if ((Int)d0 == 0 || (Int)d0 > ArityOfFunctor((Functor)d1)) {
           /* don't complain here for Prolog compatibility
              if ((Int)d0 <= 0) {
              saveregs();
@@ -2135,21 +2264,30 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
       d0 = XREG(PREG->y_u.yxx.x1);
+      Int i;
       deref_head(d0, arg_y_arg1_unk);
-    arg_y_arg1_nvar:
+arg_y_arg1_nvar:
       /* ARG1 is ok! */
       if (IsIntTerm(d0))
-        d0 = IntOfTerm(d0);
+        i = IntOfTerm(d0);
       else if (IsLongIntTerm(d0)) {
-        d0 = LongIntOfTerm(d0);
+        i = LongIntOfTerm(d0);
       } else {
         if (IsBigIntTerm(d0))
           FAIL();
         Yap_AsmError(TYPE_ERROR_INTEGER, XREG(PREG->y_u.yxx.x1));
         FAIL();
       }
+        if (i < 0) {   
+             saveregs();
+	     Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO ,d0);
+             saveregs();
+          FAIL();
+        }
 
-      /* d0 now got the argument we want */
+
+
+      /* i now got the argument we want */
       BEGD(d1);
       d1 = XREG(PREG->y_u.yxx.x2);
       deref_head(d1, arg_y_arg2_unk);
@@ -2164,29 +2302,21 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
           Yap_AsmError(TYPE_ERROR_COMPOUND,XREG(PREG->y_u.yxx.x2));
           FAIL();
         }
-        if ((Int)d0 <= 0 || (Int)d0 > ArityOfFunctor((Functor)d1)) {
-          /* don't complain here for Prolog compatibility
-             if ((Int)d0 <= 0) {
-             saveregs();
-Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
-             MkIntegerTerm(d0),"arg 1 of arg/3");
-             saveregs();
-             }
-          */
-          FAIL();
-        }
+	if (i==0 ||i > ArityOfFunctor((Functor)d1)) {
+	  FAIL();
+	}
         BEGP(pt1);
         pt1 = YREG + PREG->y_u.yxx.y;
         PREG = NEXTOP(PREG, yxx);
-        INITIALIZE_PERMVAR(pt1, pt0[d0]);
+        INITIALIZE_PERMVAR(pt1, pt0[i]);
         ENDP(pt1);
         GONext();
         ENDP(pt0);
       } else if (IsPairTerm(d1)) {
         BEGP(pt0);
         pt0 = RepPair(d1);
-        if (d0 != 1 && d0 != 2) {
-          if ((Int)d0 < 0) {
+        if (i != 1 && i != 2) {
+          if ((Int)i < 0) {
             saveregs();
             Yap_AsmError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO, YREG[PREG->y_u.yxx.y]);
           }
@@ -2195,7 +2325,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
         BEGP(pt1);
         pt1 = YREG + PREG->y_u.yxx.y;
         PREG = NEXTOP(PREG, yxx);
-        INITIALIZE_PERMVAR(pt1, pt0[d0 - 1]);
+        INITIALIZE_PERMVAR(pt1, pt0[i - 1]);
         GONext();
         ENDP(pt1);
         ENDP(pt0);
@@ -2250,16 +2380,11 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
           Yap_AsmError(TYPE_ERROR_COMPOUND, XREG(PREG->y_u.yxn.xi));
           FAIL();
         }
-        if ((Int)d0 <= 0 || (Int)d0 > ArityOfFunctor((Functor)d1)) {
-          /* don't complain here for Prolog compatibility
-             if ((Int)d0 <= 0) {
-Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
-             }
-          */
-          FAIL();
-        }
-        BEGP(pt1);
+         BEGP(pt1);
         pt1 = YREG + PREG->y_u.yxn.y;
+	if ( d0 > ArityOfFunctor((Functor)d1)) {
+	  FAIL();
+	}
         PREG = NEXTOP(PREG, yxn);
         INITIALIZE_PERMVAR(pt1, pt0[d0]);
         ENDP(pt1);
@@ -2581,7 +2706,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       if (pt1 + d1 > ENV || pt1 + d1 > (CELL *)B) {
         /* make sure we have something to show for our trouble */
         saveregs();
-        if (!Yap_dogcl(d1 PASS_REGS)) {
+        if (!Yap_growstack((d1+2 * MinStackGap)*sizeof(CELL)) ) {
                          setregs();
           Yap_AsmError(RESOURCE_ERROR_STACK, d1);
           JMPNext();
@@ -2685,7 +2810,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
         if (pt1 + d1 > ENV || pt1 + d1 > (CELL *)B) {
           /* make sure we have something to show for our trouble */
           saveregs();
-          if (!Yap_dogcl(d1 PASS_REGS)) {
+	  if (!Yap_growstack((d1+2 * MinStackGap)*sizeof(CELL) )) {
             setregs();
             Yap_AsmError(RESOURCE_ERROR_STACK, d1);
             JMPNext();
@@ -2801,7 +2926,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
         if (pt1 + d1 > ENV || pt1 + d1 > (CELL *)B) {
           /* make sure we have something to show for our trouble */
           saveregs();
-          if (!Yap_dogcl(d1 PASS_REGS)) {
+          if (!Yap_growstack((d1+2 * MinStackGap)*sizeof(CELL)) ) {
             setregs();
             Yap_AsmError(RESOURCE_ERROR_STACK, d1);
             JMPNext();
@@ -2852,16 +2977,16 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
 #ifdef LOW_LEVEL_TRACER
       if (Yap_do_low_level_trace) {
         Term ti;
-        CELL *hi = HR;
-
         ti = MkIntegerTerm((Int)(PREG->y_u.yxn.c));
         RESET_VARIABLE(HR);
-        HR[1] = XREG(PREG->y_u.yxn.xi);
-        HR[2] = ti;
+	ARG1 = (CELL)HR;
+        ARG2 = XREG(PREG->y_u.yxn.xi);
+        ARG3 = ti;
+	HR += 1;
         low_level_trace(enter_pred,
                         RepPredProp(Yap_GetPredPropByFunc(FunctorFunctor, 0)),
-                        HR);
-        HR = hi;
+                        &ARG1);
+	HR -= 1;
       }
 #endif /* LOW_LEVEL_TRACE */
       /* We have to build the structure */
@@ -2919,7 +3044,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       if (pt1 + d1 > ENV || pt1 + d1 > (CELL *)B) {
         /* make sure we have something to show for our trouble */
         saveregs();
-        if (!Yap_dogcl(d1 PASS_REGS)) {
+        if (!Yap_growstack((d1+2 * MinStackGap)*sizeof(CELL)) ) {
                          setregs();
           Yap_AsmError(RESOURCE_ERROR_STACK, d1);
           JMPNext();
@@ -2957,12 +3082,16 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       Op(p_func2f_xx, xxx);
 #ifdef LOW_LEVEL_TRACER
       if (Yap_do_low_level_trace) {
-        HR[0] = XREG(PREG->y_u.xxx.x);
+        ARG1 = XREG(PREG->y_u.xxx.x);
         RESET_VARIABLE(HR + 1);
-        RESET_VARIABLE(HR + 2);
+ARG3 = HR[1];
+        RESET_VARIABLE(HR);
+	ARG2 = HR[0];
+	HR += 2;
         low_level_trace(enter_pred,
                         RepPredProp(Yap_GetPredPropByFunc(FunctorFunctor, 0)),
-                        HR);
+                        XREGS+1);
+	HR -= 2;
       }
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
@@ -3005,12 +3134,16 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       Op(p_func2f_xy, xxy);
 #ifdef LOW_LEVEL_TRACER
       if (Yap_do_low_level_trace) {
-        HR[0] = XREG(PREG->y_u.xxy.x);
-        RESET_VARIABLE(HR + 1);
+        ARG1 =HR[0] = XREG(PREG->y_u.xxy.x);
         RESET_VARIABLE(HR + 2);
+        ARG3 =(CELL)HR[2];
+        RESET_VARIABLE(HR + 1);
+        ARG2 =(CELL)HR[1];
+	HR += 3;
         low_level_trace(enter_pred,
                         RepPredProp(Yap_GetPredPropByFunc(FunctorFunctor, 0)),
-                        HR);
+                        &ARG1);
+	HR -= 3;
       }
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
@@ -3056,12 +3189,17 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       Op(p_func2f_yx, yxx);
 #ifdef LOW_LEVEL_TRACER
       if (Yap_do_low_level_trace) {
-        HR[0] = XREG(PREG->y_u.yxx.x2);
+        ARG1 = XREG(PREG->y_u.yxx.x2);
+
+	RESET_VARIABLE(HR );
+	ARG2 = HR[0];
         RESET_VARIABLE(HR + 1);
-        RESET_VARIABLE(HR + 2);
+	ARG3 = HR[1];
+	HR +=2;
         low_level_trace(enter_pred,
                         RepPredProp(Yap_GetPredPropByFunc(FunctorFunctor, 0)),
-                        HR);
+                        HR-2);
+      HR -= 2;
       }
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
@@ -3107,12 +3245,16 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
       Op(p_func2f_yy, yyx);
 #ifdef LOW_LEVEL_TRACER
       if (Yap_do_low_level_trace) {
-        HR[0] = XREG(PREG->y_u.yyx.x);
+        ARG1 = XREG(PREG->y_u.yyx.x);
+      ARG2 = (CELL)HR;
+      ARG3 =(CELL)(HR+1);
         RESET_VARIABLE(HR + 1);
-        RESET_VARIABLE(HR + 2);
+        RESET_VARIABLE(HR );
+	HR +=2;
         low_level_trace(enter_pred,
                         RepPredProp(Yap_GetPredPropByFunc(FunctorFunctor, 0)),
-                        HR);
+                        HR-2);
+	HR -= 2;
       }
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
@@ -3285,7 +3427,7 @@ Yap_AsmError( DOMAIN_ERROR_NOT_LESS_THAN_ZERO );
         if (pt1 + d1 > ENV || pt1 + d1 > (CELL *)B) {
           /* make sure we have something to show for our trouble */
           saveregs();
-          if (!Yap_dogcl(d1 PASS_REGS)) {
+          if (!Yap_growstack((d1+2 * MinStackGap)*sizeof(CELL))) {
                            setregs();
             Yap_AsmError(INSTANTIATION_ERROR,d1);
           } else {

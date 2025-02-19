@@ -7,12 +7,11 @@
 
 /**
  *
- *   @defgroup yap-cplus-interface-atoms Prolog Atoms
- *
+ *   @defgroup FLI_YAP-cplus-interface-atoms Prolog Atoms
+ *   @ingroup FLI_YAP-cplus-interface
  *  @{
  *  @brief Symbols and associated propeeties.
  *
- *   @ingroup yap-cplus-interface
  *    @tableofcontents
  *
  *

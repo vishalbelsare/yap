@@ -10,7 +10,7 @@ INDEX.yap
   charsio.yap
   clauses.yap
   coinduction.yap
-  complete.yap
+  completer.yap
   dbqueues.yap
   dbusage.yap
   dgraphs.yap
@@ -25,12 +25,11 @@ INDEX.yap
   lists.yap
   log2md.yap
   nb.yap
+  occurs.yap
   ordsets.yap
   mapargs.yap
   maplist.yap
   maputils.yap
-  matlab.yap
-  matrix.yap
   prandom.yap
   queues.yap
   random.yap
@@ -39,6 +38,7 @@ INDEX.yap
   regexp.yap
   readutil.yap
   rltree.yap
+  scanner.yap
   sockets.yap
   splay.yap
   stringutils.yap

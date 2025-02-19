@@ -232,7 +232,7 @@
 % load our own modules
 :- use_module(flags).
 :- use_module(variables).
-:- use_module(os, [check_existance/1, convert_filename_to_problog_path/2, concat_path_with_filename2/3]).
+:- use_module(os, [check_existance/1, convert_filename_to_problog_path/2, concat_path_with_filename/3]).
 :- use_module(version_control, [get_version/3]).
 
 
@@ -332,7 +332,7 @@ print_version([H|T], Path):-
   (Path == '' ->
     FileName = H
   ;
-    concat_path_with_filename2(Path, H, FileName)
+    concat_path_with_filename(Path, H, FileName)
   ),
   check_existance(FileName),
   convert_filename_to_problog_path(FileName, FilePath),

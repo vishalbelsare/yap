@@ -18,7 +18,7 @@
       PREG = NEXTOP(NEXTOP(NEXTOP(PREG, s),Osbpp),l);
       /* assume cut is always in stack */
       saveregs();
-      prune((choiceptr)YREG[E_CB] PASS_REGS);
+      prune((choiceptr)YREG[E_CB], B PASS_REGS);
       setregs();
       GONext();
 
@@ -35,7 +35,7 @@
       SET_ASP(YREG, AS_CELLS( PREG->y_u.s.s) );
       /* assume cut is always in stack */
       saveregs();
-      prune((choiceptr)YREG[E_CB] PASS_REGS);
+      prune((choiceptr)YREG[E_CB], B PASS_REGS);
       setregs();
       PREG = NEXTOP(NEXTOP(NEXTOP(PREG, s),Osbpp),l);
       GONext();
@@ -53,7 +53,7 @@
       SET_ASP(YREG, AS_CELLS( PREG->y_u.s.s));
       PREG = NEXTOP(NEXTOP(NEXTOP(PREG, s),Osbpp),l);
       saveregs();
-      prune((choiceptr)SREG[E_CB] PASS_REGS);
+      prune((choiceptr)SREG[E_CB], B PASS_REGS);
       setregs();
       GONext();
 
@@ -107,7 +107,7 @@
         pt0 = (choiceptr)(LCL0-IntegerOfTerm(d0));
 #endif /* YAPOR_SBA && FROZEN_STACKS */
         saveregs();
-        prune(pt0 PASS_REGS);
+        prune(pt0, B PASS_REGS);
         setregs();
       }
       GONext();
@@ -144,7 +144,7 @@
         pt0 = (choiceptr)(LCL0-IntegerOfTerm(d0));
 #endif
         saveregs();
-        prune(pt0 PASS_REGS);
+        prune(pt0, B PASS_REGS);
         setregs();
       }
       GONext();
@@ -181,12 +181,13 @@
         }
 #endif  /* LOW_LEVEL_TRACE */
         pt0 = PREG->y_u.Osbpp.p;
-       do_execute:
 	CACHE_Y_AS_ENV(YREG);
 #ifndef NO_CHECKING
         /* check stacks */
         check_stack(NoStackExecute, HR);
 #endif
+       do_execute:
+
 
         FETCH_Y_FROM_ENV(YREG);
         CACHE_A1();
@@ -211,15 +212,14 @@
         /* this is the equivalent to setting up the stack */
         ALWAYS_GONext();
         ALWAYS_END_PREFETCH();
-       ENDCACHE_Y_AS_ENV();
 
     NoStackExecute:
      	EXPORT_INT(interrupt_execute,pt0);
-        pt0 = PREG->y_u.Osbpp.p;
- goto do_execute;
+	goto do_execute;
 
       }
       JMPNext();
+       ENDCACHE_Y_AS_ENV();
       ENDBOp();
 
       /* dexecute    Label               */
@@ -307,16 +307,16 @@
       {
         PredEntry *pt0;
          pt0 = PREG->y_u.Osbpp.p;
-   call_direct:
-#ifdef LOW_LEVEL_TRACER
-      if (Yap_do_low_level_trace) {
-        low_level_trace(enter_pred,PREG->y_u.Osbpp.p,XREGS+1);
-      }
-#endif  /* LOW_LEVEL_TRACER */
        CACHE_Y_AS_ENV(YREG);
 #ifndef NO_CHECKING
         check_stack(NoStackCall, HR);
 #endif
+   call_direct:
+#ifdef LOW_LEVEL_TRACER
+      if (Yap_do_low_level_trace && pt0 ) {
+        low_level_trace(enter_pred,pt0,XREGS+1);
+      }
+#endif  /* LOW_LEVEL_TRACER */
 
 	 CACHE_A1();
         ENV = ENV_YREG;
@@ -365,16 +365,21 @@
     NoStackCall:
         pt0 = PREG->y_u.Osbpp.p;
 	EXPORT_INT(interrupt_call, pt0);
+	ENV_YREG=YENV;
+       goto call_direct;
       ENDCACHE_Y_AS_ENV();
 
 
-       goto call_direct;
       }
       JMPNext();
       ENDBOp();
 
       BOp(procceed, p);
       CACHE_Y_AS_ENV(YREG);
+#ifndef NO_CHECKING
+        check_stack(NoStackProcceed, HR);
+#endif
+    restart_procceed:
       ALWAYS_LOOKAHEAD(CPREG->opc);
       PREG = CPREG;
       /* for profiler */
@@ -386,6 +391,30 @@
       WRITEBACK_Y_AS_ENV();
       ALWAYS_GONext();
       ALWAYS_END_PREFETCH();
+    NoStackProcceed:
+     {
+      saveregs();
+       PredEntry *pt0=interrupt_procceed(PASS_REGS1);
+       setregs();
+      if (pt0==NULL)
+	 goto restart_procceed;
+      //yyENV_YREG=ENV;
+      if (B<(choiceptr)ENV_YREG) {
+	ENV_YREG=(CELL*)B;
+	      WRITEBACK_Y_AS_ENV();
+      }
+        CACHE_A1();
+        BEGD(d0);
+        d0 = (CELL)B;
+        PREG = pt0->CodeOfPred;
+        /* for profiler */
+        save_pc();
+        ENV_YREG[E_CB] = d0;
+        ENDD(d0);
+     }
+      GONext();
+
+
       ENDCACHE_Y_AS_ENV();
 
       ENDBOp();

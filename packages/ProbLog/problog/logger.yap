@@ -222,7 +222,7 @@
 :- use_module(library(system),[datime/1,mktime/2]).
 :- use_module(library(lists),[append/3,member/2]).
 
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 :- style_check(single_var).
 :- initialization((
 	bb_put(logger:logger_filename,'out.dat'),
@@ -304,7 +304,7 @@ logger_set_delimiter(Delimiter) :-
 logger_set_variable(Name,Value) :-
 	atom_concat(logger_data_,Name,Key),
 	(
-	    bb_get(logger:Key,null)
+	   true % bb_get(logger:Key,null)
 	->
 	    (
 		bb_put(logger:Key,Value)
@@ -453,9 +453,7 @@ logger_write_data :-
 	bb_get(logger:logger_filename,FName),
 	bb_get(logger:logger_variables,Variables),
 	open(FName,'append',Handle),
-writeln(append:Handle),
 	logger_write_data_intern(Variables,Handle),
-writeln(close:Handle),
 	close(Handle),
 
 	logger_reset_all_variables.

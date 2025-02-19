@@ -14,6 +14,8 @@
 * comments:	new utility predicates for YAP				 *
 *									 *
 *************************************************************************/
+
+
 #ifdef SCCS
 static char     SccsId[] = "@(#)utilpreds.c	1.3";
 #endif
@@ -488,7 +490,7 @@ p_copy_term( USES_REGS1 )		/* copy term t to a new instance  */
     return FALSE;
   /* be careful, there may be a stack shift here */
   return Yap_unify(ARG2,t);
-}
+a}
 
 static Int
 p_duplicate_term( USES_REGS1 )		/* copy term t to a new instance  */
@@ -735,12 +737,13 @@ p_break_rational( USES_REGS1 )
 
 
 /** @pred  term_factorized(? _TI_,- _TF_, ?SubTerms)
-    
+
 
 Similar to rational_term_to_tree/4, but _SubTerms_ is a proper list.
 
 
-*/static Int
+*/
+static Int
 p_break_rational3( USES_REGS1 )
 {
   Term tf, t1=Deref(ARG1);
@@ -2862,8 +2865,10 @@ hash_complex_term(register CELL *pt0,
 	    {
 	      CELL *pt = RepAppl(d0);
 	      *st++ = pt[1];
-#if  SIZEOF_DOUBLE == 2*SIZEOF_INT_P
 	      *st++ = pt[2];
+#if  SIZEOF_DOUBLE == 2*SIZEOF_INT_P
+	      *st++ = pt[3];
+	      *st++ = pt[4];
 #endif
 	      break;
 	    }
@@ -2959,6 +2964,17 @@ Yap_TermHash(Term t, Int size, Int depth, int variant)
   return i1 % size;
 }
 
+/** @pred term_hash(+ _Term_, + _Depth_, + _Range_, ? _Hash_)
+
+Unify  _Hash_ with a positive integer calculated from the structure
+of the term.  The range of the positive integer is from `0` to, but
+not including,  _Range_. If  _Depth_ is `-1` the whole term
+is considered. Otherwise, the term is considered only up to depth
+`1`, where the constants and the principal functor have depth
+`1`, and an argument of a term with depth  _I_ has depth  _I+1_. 
+
+ 
+*/
 static Int
 p_term_hash( USES_REGS1 )
 {
@@ -3075,12 +3091,50 @@ p_instantiated_term_hash( USES_REGS1 )
   return Yap_unify(ARG4,result);
 }
 
+static CELL init_variant_entry(CELL *ptr USES_REGS)
+{
+  CELL trl = (CELL)ptr;
+  if (ptr < HBREG) {
+
+    trl = (CELL)HR;
+    RESET_VARIABLE(HR);
+
+    HR[1] = 0;
+    HR[2] = 0;
+    HR+=3;
+    Bind_and_Trail(ptr,trl );
+}
+  return trl;
+}
+
+
+
+bool left_match(CELL *ptrl, CELL trr USES_REGS)
+{
+  if (ptrl[2] == 0) {
+    ptrl[2]= trr;
+    return true;
+  }
+  return ptrl[2]==trr;
+}
+
+bool right_match(CELL *ptrr, CELL trl USES_REGS)
+{
+  if (ptrr[1] == 0) {
+   ptrr[1]=trl;
+    return true;
+  }
+
+  return ptrr[1]==trl;
+}
+
+
 static int variant_complex(register CELL *pt0, register CELL *pt0_end, register
-		   CELL *pt1 USES_REGS)
+			  CELL *pt1 USES_REGS)
 {
   tr_fr_ptr OLDTR = TR;
-  register CELL **tovisit = (CELL **)ASP;
-  /* make sure that unification always forces trailing */
+  CELL **tovisit = (CELL **)ASP;
+    /* make sure that unification always forces trailing */
   HBREG = HR;
 
 
@@ -3092,33 +3146,37 @@ static int variant_complex(register CELL *pt0, register CELL *pt0_end, register
     d0 = Derefa(pt0);
     d1 = Derefa(pt1);
     if (IsVarTerm(d0)) {
-      if (IsVarTerm(d1)) {
-	CELL *pt0 = VarOfTerm(d0);
-	CELL *pt1 = VarOfTerm(d1);
-	if (pt0 >= HBREG || pt1 >= HBREG) {
-	  /* one of the variables has been found before */
-	  if (VarOfTerm(d0)+1 == VarOfTerm(d1)) continue;
-	  goto fail;
-	} else {
-	  /* two new occurrences of the same variable */
-	  Term n0 = MkVarTerm(), n1 = MkVarTerm();
-	  Bind_Global(VarOfTerm(d0), n0);
-	  Bind_Global(VarOfTerm(d1), n1);
+      if (!IsVarTerm(d1))
+	goto fail;
+      if (d0==d1) {
+	d0 =  init_variant_entry(VarOfTerm(d0) PASS_REGS);
+	if (left_match(VarOfTerm(d0), d0 PASS_REGS) &&
+	  right_match(VarOfTerm(d0), d0 PASS_REGS)) {
+         continue;
 	}
-	continue;
-      } else {
 	goto fail;
       }
-    } else if (IsVarTerm(d1)) {
+      d0 =  init_variant_entry(VarOfTerm(d0) PASS_REGS);
+      d1 = Deref(d1);
+      d1 =  init_variant_entry(VarOfTerm(d1) PASS_REGS);
+      d0 = Deref(d0);
+      if (left_match(VarOfTerm(d0), d1 PASS_REGS) &&
+	  right_match(VarOfTerm(d1), d0 PASS_REGS)) {
+         continue;
+      }
       goto fail;
-    } else {
-      if (d0 == d1) continue;
-      else if (IsAtomOrIntTerm(d0)) {
+    }
+    if (IsVarTerm(d1))
+      goto fail;
+    if (IsAtomOrIntTerm(d0)) {
+    if (d0==d1)
+      continue;
 	goto fail;
-      } else if (IsPairTerm(d0)) {
-	if (!IsPairTerm(d1)) {
-	  goto fail;
-	}
+    }
+    if (IsPairTerm(d0)) {
+      if (!IsPairTerm(d1)) {
+	goto fail;
+      }
 #ifdef RATIONAL_TREES
 	/* now link the two structures so that no one else will */
 	/* come here */
@@ -3145,25 +3203,26 @@ static int variant_complex(register CELL *pt0, register CELL *pt0_end, register
 	pt0_end = RepPair(d0) + 1;
 	pt1 = RepPair(d1) - 1;
 	continue;
-      } else if (IsApplTerm(d0)) {
+    }
+    if (IsApplTerm(d0)) {
 	register Functor f;
 	register CELL *ap2, *ap3;
 	if (!IsApplTerm(d1)) {
 	  goto fail;
-	} else {
-	  /* store the terms to visit */
+	}
+	/* store the terms to visit */
 	  Functor f2;
-	  ap2 = RepAppl(d0);
-	  ap3 = RepAppl(d1);
-	  f = (Functor)(*ap2);
-	  f2 = (Functor)(*ap3);
-	  if (f != f2)
+	ap2 = RepAppl(d0);
+	ap3 = RepAppl(d1);
+	f = (Functor)(*ap2);
+	f2 = (Functor)(*ap3);
+	if (f != f2)
+	  goto fail;
+	if (IsExtensionFunctor(f)) {
+	  if (!unify_extension(f, d0, ap2, d1))
 	    goto fail;
-	  if (IsExtensionFunctor(f)) {
-	    if (!unify_extension(f, d0, ap2, d1))
-	      goto fail;
-	    continue;
-	  }
+	  continue;
+	}
 #ifdef RATIONAL_TREES
 	/* now link the two structures so that no one else will */
 	/* come here */
@@ -3191,11 +3250,9 @@ static int variant_complex(register CELL *pt0, register CELL *pt0_end, register
 	  pt0_end = ap2 + d0;
 	  pt1 = ap3;
 	  continue;
-	}
-      }
     }
   }
-  /* Do we still have compound terms to visit */
+   /* Do we still have compound terms to visit */
   if (tovisit < (CELL **)ASP) {
 #ifdef RATIONAL_TREES
     pt0 = tovisit[0];
@@ -3211,7 +3268,6 @@ static int variant_complex(register CELL *pt0, register CELL *pt0_end, register
 #endif
     goto loop;
   }
-
   HR = HBREG;
   /* untrail all bindings made by variant */
   while (TR != (tr_fr_ptr)OLDTR) {
@@ -4389,11 +4445,22 @@ p_reset_variables( USES_REGS1 )
   return TRUE;
 }
 
+static Int
+p_in( USES_REGS1 )
+{
+  Term t = Deref(ARG1);
+  Term l = Deref(ARG2);
+  while (IsPairTerm(l)) {
+    if (Yap_unify(t,HeadOfTerm(l)))
+      return true;
+    l = TailOfTerm(l);
+  }
+  return false;
+}
+
 void Yap_InitUtilCPreds(void)
 {
-  CACHE_REGS
-  Term cm = CurrentModule;
-  //  Yap_InitCPred("copy_term", 2, p_copy_term, 0);
+    //  Yap_InitCPred("copy_term", 2, p_copy_term, 0);
   //Yap_InitCPred("duplicate_term", 2, p_duplicate_term, 0);
   //Yap_InitCPred("copy_term_nat", 2, p_copy_term_no_delays, 0);
   Yap_InitCPred("_ground", 1, p_ground, SafePredFlag);
@@ -4432,17 +4499,6 @@ attributes.  This predicate is Cycle-safe.
   Yap_InitCPred("is_list", 1, p_is_list, SafePredFlag|TestPredFlag);
   Yap_InitCPred("$is_list_or_partial_list", 1, p_is_list_or_partial_list, SafePredFlag|TestPredFlag);
   Yap_InitCPred("rational_term_to_tree", 4, p_break_rational, 0);
-/** @pred  rational_term_to_tree(? _TI_,- _TF_, ?SubTerms, ?MoreSubterms)
-
-
-The term _TF_ is a forest representation (without cycles and repeated
-terms) for the Prolog term _TI_. The term _TF_ is the main term.  The
-difference list _SubTerms_-_MoreSubterms_ stores terms of the form
-_V=T_, where _V_ is a new variable occuring in _TF_, and _T_ is a copy
-of a sub-term from _TI_.
-
-
-*/
   Yap_InitCPred("term_factorized", 3, p_break_rational3, 0);
 
   Yap_InitCPred("=@=", 2, p_variant, 0);
@@ -4450,28 +4506,27 @@ of a sub-term from _TI_.
   Yap_InitCPred("unnumbervars", 2, unnumbervars, 0);
   Yap_InitCPred("varnumbers", 2, unnumbervars, 0);
   /* use this carefully */
-  Yap_InitCPred("$skip_list", 3, p_skip_list, SafePredFlag|TestPredFlag);
-  Yap_InitCPred("$skip_list", 4, p_skip_list4, SafePredFlag|TestPredFlag);
+  Yap_InitCPred("skip_list", 3, p_skip_list, SafePredFlag|TestPredFlag);
+  Yap_InitCPred("skip_list", 4, p_skip_list4, SafePredFlag|TestPredFlag);
   Yap_InitCPred("$free_arguments", 1, p_free_arguments, TestPredFlag);
-  CurrentModule = TERMS_MODULE;
   //  Yap_InitCPred("variable_in_term", 2, p_var_in_term, 0);
-  Yap_InitCPred("term_hash", 4, p_term_hash, 0);
-  Yap_InitCPred("instantiated_term_hash", 4, p_instantiated_term_hash, 0);
-  Yap_InitCPred("variant", 2, p_variant, 0);
-  Yap_InitCPred("subsumes", 2, p_subsumes, 0);
-  Yap_InitCPred("term_subsumer", 3, p_term_subsumer, 0);
-  Yap_InitCPred("variables_within_term", 3, p_variables_within_term, 0);
-  //Yap_InitCPred("new_variables_in_term", 3, p_new_variables_in_term, 0);
-  Yap_InitCPred("export_term", 3, p_export_term, 0);
-  Yap_InitCPred("kill_exported_term", 1, p_kill_exported_term, SafePredFlag);
-  Yap_InitCPred("import_term", 2, p_import_term, 0);
-  Yap_InitCPred("freshen_variables", 1, p_freshen_variables, 0);
-  Yap_InitCPred("reset_variables", 1, p_reset_variables, 0);
-  CurrentModule = cm;
+  Yap_InitCPredInModule("term_hash", 4, p_term_hash, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("instantiated_term_hash", 4, p_instantiated_term_hash, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("variant", 2, p_variant, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("subsumes", 2, p_subsumes, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("term_subsumer", 3, p_term_subsumer, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("variables_within_term", 3, p_variables_within_term, 0, TERMS_MODULE);
+  //Yap_InitCPredInModule("new_variables_in_term", 3, p_new_variables_in_term, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("export_term", 3, p_export_term, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("kill_exported_term", 1, p_kill_exported_term, SafePredFlag, TERMS_MODULE);
+  Yap_InitCPredInModule("import_term", 2, p_import_term, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("freshen_variables", 1, p_freshen_variables, 0, TERMS_MODULE);
+  Yap_InitCPredInModule("reset_variables", 1, p_reset_variables, 0, TERMS_MODULE);
 #ifdef DEBUG
   Yap_InitCPred("$force_trail_expansion", 1, p_force_trail_expansion, SafePredFlag);
   Yap_InitCPred("dum", 1, camacho_dum, SafePredFlag);
 #endif
+  Yap_InitCPred("$in", 2, p_in, SafePredFlag);
 }
 
 /// @}

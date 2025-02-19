@@ -1,4 +1,4 @@
-s/*************************************************************************
+/*************************************************************************
 *									 *
 *	 YAP Prolog 							 *
 *									 *
@@ -28,7 +28,7 @@ s/*************************************************************************
   * 
 */
 
-:- system_module( '$_statistics', [key_statistics/3,
+:- system_module_( '$_statistics', [key_statistics/3,
         statistics/0,
         statistics/2,
         time/1], []).
@@ -185,7 +185,7 @@ tables such as hash tables that select according to value,   _Index Switch Size_
 
 Number of garbage collections, amount of space recovered in kbytes, and
 total time spent doing garbage collection in milliseconds. More detailed
-information is available using `yap_flag(gc_trace,verbose)`.
+information is available using `set_prolog_flag(gc_trace,verbose)`.
 
 + global_stack 
 
@@ -236,7 +236,7 @@ garbage collection and stack shifting.
 
 Number of times YAP had to
 expand the heap, the stacks, or the trail. More detailed information is
-available using `yap_flag(gc_trace,verbose)`.
+available using `set_prolog_flag(gc_trace,verbose)`.
 
 + static_code 
 
@@ -324,12 +324,6 @@ key_statistics(Key, NOfEntries, TotalSize) :-
 	TotalSize is ClSize+IndxSize.
 
 
-%%	time(:Goal)
-%
-%	Time the execution of Goal.  Possible choice-points of Goal are removed.
-%	Based on the SWI-Prolog definition minus reporting the number of inferences,
-%	which YAP does not currently supports
-
 /** @pred  time(: _Goal_) 
 
 
@@ -343,29 +337,22 @@ does not support).
 :- meta_predicate time(0).
 
 time(Goal) :-
-	var(Goal),
-	throw_error(instantiation_error,time(Goal)).
-time(_:Goal) :-
-	var(Goal),
-	throw_error(instantiation_error,time(Goal)).
-time(Goal) :- \+ must_be_callable(Goal), !,
-	throw_error(type_error(callable,Goal),time(Goal)).
-time(Goal) :-
-	statistics(walltime, _),
-	statistics(cputime, _), 
+	 must_be_callable(Goal),
+	statistics(cputime, [_,T0]),
+	statistics(walltime, [_,CT0]), 
 	(   catch(Goal, E, true)
 	->  Result = yes
 	;   Result = no
 	),
 	statistics(cputime, [_, Time]),
 	statistics(walltime, [_, Wall]),
-	(   Time =:= 0
-	->  CPU = 'Inf'
-	;   CPU is truncate(Time/Wall*100)
-	),
-	TimeSecs is Time/1000,
-	WallSecs is Wall/1000,
-	format(user_error,'% ~3f CPU in ~3f seconds (~|~t~w~3+% CPU)~n', [TimeSecs, WallSecs, CPU]),
+	%% (   Time =:= 0
+	%% ->  CPU = 'Inf'
+	%% ;   CPU is truncate(Time/Wall*100)
+	%% ),
+	TimeMiliSecs is (Time-T0),
+	WallMiliSecs is (Wall-CT0),
+	format(user_error,'% ~a in ~w/~w msecs CPU/Wall clock time.~n', [Result,TimeMiliSecs, WallMiliSecs]),
 	(   nonvar(E)
 	->  throw(E)
 	;   Result == yes

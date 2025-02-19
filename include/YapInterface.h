@@ -20,7 +20,7 @@
 
 @addtogroup ChYInterface
    @{
-4
+
    @brief C-Interface to YAP.
 
 The following routines export the YAP internals and architecture.
@@ -40,6 +40,8 @@ The following routines export the YAP internals and architecture.
 #endif
 
 #include "YapDefs.h"
+
+#include "YapError.h"
 
 #if HAVE_STDARG_H
 #include <stdarg.h>
@@ -106,19 +108,17 @@ extern YAP_Term YAP_A(int);
 #define YAP_ARG15 YAP_A(15)
 #define YAP_ARG16 YAP_A(16)
 
-/**
-   Copy a term to a goal's arguments.  */
+///   Copy a term to a goal's arguments.  */
 X_API
 extern YAP_Term YAP_SetA(int, YAP_Term);
 
-/**
-   Term t is unbound.  */
+///  Term t is unbound.  
 extern X_API YAP_Bool YAP_IsVarTerm(YAP_Term);
 
-/**   Term t is bound.  */
+///   Term t is bound.  
 extern X_API YAP_Bool YAP_IsNonVarTerm(YAP_Term  t);
 
-/** Allocate a new variable in the global stack.*/
+/// Allocate a new variable in the global stack.
 extern X_API YAP_Term YAP_MkVarTerm(void);
 
 /*  YAP_Bool IsIntTerm(YAP_Term t)  */
@@ -201,19 +201,25 @@ extern X_API YAP_Term YAP_MkAtomTerm(YAP_Atom);
 /*    YAP_Atom  AtomOfTerm(Term) */
 extern X_API YAP_Atom YAP_AtomOfTerm(YAP_Term);
 
+/// returns the interned string c 
 extern X_API YAP_Atom YAP_LookupAtom(const char *c);
 
+/// returns the interned wide string c 
 extern X_API YAP_Atom YAP_LookupWideAtom(const wchar_t *c);
 
+/// returns the interned wide string c, even if hidden. 
 extern X_API YAP_Atom YAP_FullLookupAtom(const char *c);
 
-/*    int  AtomNameLength(Atom) */
+/// returns the size of a string, in characters.
 extern X_API size_t YAP_AtomNameLength(YAP_Atom);
 
+/// returns whether the atom includes non-ascii code-points
 extern X_API YAP_Bool YAP_IsWideAtom(YAP_Atom a);
 
+/// returns the text associated to atom _a_, as UTF-8 
 extern X_API const char *YAP_AtomName(YAP_Atom a);
 
+/// returns the wide text associated to atom _a_ 
 extern X_API const wchar_t *YAP_WideAtomName(YAP_Atom a);
 
 /*    YAP_Term  MkPairTerm(YAP_Term Head, YAP_Term Tail) */
@@ -243,10 +249,13 @@ extern X_API YAP_Term YAP_MkApplTerm(YAP_Functor functor, YAP_UInt arity,
 
 extern X_API YAP_Term YAP_MkNewApplTerm(YAP_Functor f, YAP_UInt arity);
 
+/// if _t_ os a compound term, a list, or an atom, return _t_'s main functor
 extern X_API YAP_Functor YAP_FunctorOfTerm(YAP_Term t);
 
+/// return the nth argument of term _t_ (starting from 1) */
 extern X_API YAP_Term YAP_ArgOfTerm(YAP_UInt n, YAP_Term t);
 
+/// return the arguments of term _t_ as a vector */
 extern X_API YAP_Term *YAP_ArgsOfTerm(YAP_Term t);
 
 extern X_API YAP_Functor YAP_MkFunctor(YAP_Atom a, YAP_UInt n);
@@ -290,8 +299,10 @@ extern X_API YAP_Int YAP_ListLength(YAP_Term);
 
 extern X_API size_t YAP_UTF8_TextLength(YAP_Term t);
 
-/*  void CallProlog(YAP_Term t) */
-extern X_API YAP_Int YAP_CallProlog(YAP_Term t);
+extern X_API YAP_Term YAP_Eval(YAP_Term t);
+
+  /*  void YAP_RunGoal(YAP_Term t) */
+extern X_API YAP_Int YAP_RunGoal(YAP_Term t);
 
 /*  void cut_fail(void) */
 extern X_API void YAP_cut_up(void);
@@ -308,13 +319,13 @@ extern X_API void YAP_cut_up(void);
     return FALSE;                                                              \
   } while (0)
 
-/*  void *AllocSpaceFromYAP_(int) */
+/// a version of malloc that allocates space in the DB (most often, just malloc).
 extern X_API void *YAP_AllocSpaceFromYap(size_t);
 
-/*  void *ReallocSpaceFromYAP_(void*,int) */
+/// a version of realloc that allocates space in the DB (most often, just realloc).
 extern X_API void *YAP_ReallocSpaceFromYap(void *, size_t);
 
-/*  void FreeSpaceFromYAP_(void *) */
+/// a version of free that deallocates space in the DB (most often, just free).
 extern X_API void YAP_FreeSpaceFromYap(void *);
 
 /*  int YAP_RunGoal(YAP_Term) */
@@ -501,10 +512,10 @@ extern X_API void YAP_CloseAllOpenStreams(void);
 extern X_API void YAP_FlushAllStreams(void);
 
 /*  YAP_Term  *YAP_StartSlots()  */
-extern X_API void YAP_StartSlots(void);
+extern X_API int YAP_StartSlots(void);
 
 /*  YAP_Term  *YAP_EndSlots()  */
-extern X_API void YAP_EndSlots(void);
+extern X_API void YAP_EndSlots(int);
 
 /*  YAP_Term  *YAP_NewSlots()  */
 extern X_API YAP_handle_t YAP_NewSlots(int);
@@ -592,6 +603,7 @@ extern X_API int YAP_ThreadDetachEngine(int);
 extern X_API int YAP_ThreadDestroyEngine(int);
 
 /* blob stuff */
+extern X_API YAP_Bool YAP_IsBlobTerm(YAP_Term);
 extern X_API YAP_Term YAP_MkBlobTerm(unsigned int);
 extern X_API void *YAP_BlobOfTerm(YAP_Term);
 
@@ -687,19 +699,19 @@ extern X_API int YAP_RequiresExtraStack(size_t);
  * @param [in,out] argc the array with processed settings YAP
  *
  * @return
- */ /*
-     * proccess command line arguments: valid switches are:
-     *  -b    boot file
-     *  -l    load file
-     *  -L    load file, followed by exit.
-     *  -s    stack area size (K)
-     *  -h    heap area size
-     *  -a    aux stack size
-     *  -e    emacs_mode -m
-     *  -DVar=Value
-     *  reserved memory for alloc IF DEBUG
-     *  -P    only in development versions
-     */
+ *
+ * proccess command line arguments: valid switches are:
+ *  -b    boot file
+ *  -l    load file
+ *  -L    load file, followed by exit.
+ *  -s    stack area size (K)
+ *  -h    heap area size
+ *  -a    aux stack size
+ *  -e    emacs_mode -m
+ *  -DVar=Value
+ *  reserved memory for alloc IF DEBUG
+ *  -P    only in development versions
+ */
 extern X_API YAP_file_type_t YAP_parse_yap_arguments(int argc, char *argv[],
                                                      YAP_init_args *iap);
 
@@ -724,7 +736,7 @@ extern X_API void * YAP_PointerOfTerm(YAP_Term t);
 #define  YAP_MkPointerTerm(ptr)  YAP_MkIntTerm((YAP_Int)(ptr))
 
 //> interface to old array library
-extern X_API void * YAP_FetchArray(YAP_Term t1, intptr_t *sz, int *type);
+extern X_API void * YAP_FetchArray(YAP_Term t1, ssize_t *sz, int *base, int *type, ssize_t *ndims, ssize_t **dims);
 
   __END_DECLS
 

@@ -4,12 +4,64 @@
 /** @file preddyns.yap */
 
 /**
- * @addtogroup Database
- * @{
+ * @adefgroup DatabasePredDyns
+ * @ingroup Builtins
+
 
 Next follow the main operations on dynamic predicates.
 
 */
+
+/** @pred  dynamic( + _P_ )
+
+
+Declares predicate  _P_ or list of predicates [ _P1_,..., _Pn_]
+as a dynamic predicate.  _P_ must be written as a predicate indicator, that is in form
+ _Name/Arity_ or _Module:Name/Arity_.
+
+```
+:- dynamic god/1.
+```
+
+
+a more convenient form can be used:
+
+```
+:- dynamic son/3, father/2, mother/2.
+```
+
+or, equivalently,
+
+```
+:- dynamic [son/3, father/2, mother/2].
+```
+
+Note:
+
+a predicate is assumed to be dynamic when
+asserted before being defined.
+
+
+*/
+dynamic(MX) :-
+
+    '$yap_strip_module'(MX,M,X),
+    '$dynamic'(X, M).
+
+
+'$dynamic'([], _) :- !.
+'$dynamic'([H|L], M) :- !, '$dynamic'(H, M), '$dynamic'(L, M).
+'$dynamic'((A,B),M) :- !, '$dynamic'(A,M), '$dynamic'(B,M).
+'$dynamic'((M:B),_M) :- !, '$dynamic'(B,M).
+'$dynamic'(A//N,Mod) :- integer(N), !,
+	N1 is N+2,
+	'$dynamic'(A/N1,Mod).
+'$dynamic'(A/N,Mod) :-
+  functor(G, A, N),
+  '$mk_dynamic'(Mod:G),
+!.
+'$dynamic'(G,Mod) :-
+      throw_error(error(type_error(Mod:G),dynamic(Mod:G))).
 
 /** @pred  asserta(+ _C_) is iso
 
@@ -19,7 +71,7 @@ undefined, it is declared  dynamic (see dynamic/1).
 
 */
 asserta(Clause) :-
-    '$assert'(Clause, asserta, _Ref).
+    '$assert'(Clause, asserta, []).
 
 
 /** @pred  assertz(+ _C_) is iso
@@ -33,7 +85,7 @@ predicates. This is also as specified in the ISO standard. YAP also allows
 asserting clauses for static predicates, under the restriction that the static predicate may not be live in the stacks.
 */
 assertz(Clause) :-
-    '$assert'(Clause, assertz, _).
+    '$assert'(Clause, assertz, []).
 
 /** @pred  assert(+ _C_)
 
@@ -49,17 +101,12 @@ should use assert_static/1.
 
 */
 assert(Clause) :-
-    '$assert'(Clause, assertz, _).
+    '$assert'(Clause, assertz, []).
 
 '$assert'(Clause, Where, R) :-
     '$yap_strip_clause'(Clause, M, MH, H, B),
-    '$mk_dynamic'(MH:H),
-    !,
     (M==MH->MB=B;MB=M:B),
     '$compile'((H :-MB), Where, (H :-MB), MH,0, R).
-'$assert'(Clause, Where, R) :-
-    '$expand_clause'(Clause,C,C0),    
-    '$$compile'(C, Where, C0, 0, R).
 
 /** @pred  asserta(+ _C_,- _R_)
 
@@ -79,7 +126,7 @@ declared dynamic.
 
 The same as `assertz(C)` but unifying  _R_ with
 the  database reference that identifies the new clause, in a
-one-to-one way. Note that `asserta/2` only works for dynamic
+one-to-one way. Note that assertz/2 only works for dynamic
 predicates. If the predicate is undefined, it will automatically be
 declared dynamic.
 
@@ -92,7 +139,7 @@ assertz(Clause, Ref) :-
 
 The same as `assert(C)` ( (see Modifying the Database)) but
 unifies  _R_ with the  database reference that identifies the new
-clause, in a one-to-one way. Note that `asserta/2` o>ly works for dynamic
+clause, in a one-to-one way. Note that assert/2 only works for dynamic
 predicates. If the predicate is undefined, it will automatically be
 declared dynamic.
 
@@ -114,7 +161,6 @@ assert(Clause, Ref) :-
      true
     ;
      (X/\8)=:=0 ->
-     '$inform_as_reconsulted'(N,A),
      '$remove_all_d_clauses'(H,Mod)
     ;
      true
@@ -163,11 +209,19 @@ assert(Clause, Ref) :-
 /** @pred  retract(+ _C_) is iso
 
 
-Erases the first clause in the program that matches  _C_. This
-predicate may also be used for the static predicates that have been
-compiled when the source mode was `on`. For more information on
-source/0 ( (see Setting the Compiler)).
+Erases the first clause in the program that matches  _C_, where _C_ is:
+- `H :- B`: _H_ should be bound to a goal, _H_ may be unbound;
+- `H` is the same as `H :- true`
+obs:
+- retract/1 can only retract one clause; see retractall/1 for a version of retract.1 that can retract several clauses.
+- you can use retract((H:-_)) to retract clauses based on the head;
+- you may use module prefixes over the whole clause, and over the head.
+- the module system guarantees that system calls and calls to goals in the same module do not have a module prefix;
+- _H_ must refer to a dynamic predicate;
+- if you retract all the  clauses for a dynamic predicate, the predicate will still be dynamic and is not considered undefined.
 
+YAP Extension:
+- If you call retract on an undefined predicate, the predicate is marked as dynamic. 
 
 */
 retract( C ) :-
@@ -178,7 +232,6 @@ retract( C ) :-
 
 '$retract2'(F, H, M, B, R) :-
 	F /\ 0x08000000 =:= 0x08000000, !,
-
 	%	'$is_log_updatable'(H, M), !,
 	'$log_update_clause'(H,M,B,R),
 	erase(R).

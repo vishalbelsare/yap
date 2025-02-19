@@ -1,7 +1,6 @@
-
 /*************************************************************************
 *									 *
-yrdXu*	 YAyap
+*	 YAyap
  Prolog 							 *
 *									 *
 *	Yap Prolog was developed at NCCUP - Universidade do Porto	 *
@@ -396,6 +395,7 @@ inline static yamop *emit_ilabel(register CELL addr,
 
 inline static CELL *emit_bmlabel(register CELL addr,
                                  struct intermediates *cip) {
+  CACHE_REGS
   if (LOCAL_nperm > 1024)
     return NULL;
   return (CELL *)(emit_a(Unsigned(cip->code_addr) + cip->label_offset[addr]));
@@ -668,7 +668,7 @@ inline static yamop *a_vr(op_numbers opcodex, op_numbers opcodey, yamop *code_p,
         GONEXT(yx);
         return code_p;
       }
-    } else if (opcodey == _get_y_var) {
+    } else if (opcodey == _get_y_var && false) {
       struct PSEUDO *ncpc = cpc->nextInst;
       if (ncpc->op == get_var_op &&
           ((Ventry *)ncpc->rnd1)->KindOfVE == PermVar) {
@@ -1038,8 +1038,10 @@ inline static yamop *a_ud(op_numbers opcode, op_numbers opcode_w, yamop *code_p,
     code_p->y_u.od.opcw = emit_op(opcode_w);
     code_p->y_u.od.d[0] = (CELL)FunctorDouble;
     code_p->y_u.od.d[1] = RepAppl(cpc->rnd1)[1];
-#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
     code_p->y_u.od.d[2] = RepAppl(cpc->rnd1)[2];
+#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
+    code_p->y_u.oi.i[3] = RepAppl(cpc->rnd1)[3];
+    code_p->y_u.od.d[4] = RepAppl(cpc->rnd1)[4];
 #endif
   }
   GONEXT(od);
@@ -1053,6 +1055,7 @@ inline static yamop *a_ui(op_numbers opcode, op_numbers opcode_w, yamop *code_p,
     code_p->y_u.oi.opcw = emit_op(opcode_w);
     code_p->y_u.oi.i[0] = (CELL)FunctorLongInt;
     code_p->y_u.oi.i[1] = RepAppl(cpc->rnd1)[1];
+    code_p->y_u.oi.i[2] = RepAppl(cpc->rnd1)[2];
   }
   GONEXT(oi);
   return code_p;
@@ -1064,8 +1067,10 @@ inline static yamop *a_wd(op_numbers opcode, yamop *code_p, int pass_no,
     code_p->opc = emit_op(opcode);
     code_p->y_u.d.d[0] = (CELL)FunctorDouble;
     code_p->y_u.d.d[1] = RepAppl(cpc->rnd1)[1];
-#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
     code_p->y_u.d.d[2] = RepAppl(cpc->rnd1)[2];
+#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
+    code_p->y_u.d.d[3] = RepAppl(cpc->rnd1)[3];
+    code_p->y_u.d.d[4] = RepAppl(cpc->rnd1)[4];
 #endif
   }
   GONEXT(d);
@@ -1078,6 +1083,7 @@ inline static yamop *a_wi(op_numbers opcode, yamop *code_p, int pass_no,
     code_p->opc = emit_op(opcode);
     code_p->y_u.i.i[0] = (CELL)FunctorLongInt;
     code_p->y_u.i.i[1] = RepAppl(cpc->rnd1)[1];
+    code_p->y_u.i.i[2] = RepAppl(cpc->rnd1)[2];
   }
   GONEXT(i);
   return code_p;
@@ -1124,9 +1130,11 @@ inline static yamop *a_rd(op_numbers opcode, yamop *code_p, int pass_no,
     code_p->opc = emit_op(opcode);
     code_p->y_u.xd.x = emit_x(cpc->rnd2);
     code_p->y_u.xd.d[0] = (CELL)FunctorDouble;
-    code_p->y_u.xd.d[1] = RepAppl(cpc->rnd1)[1];
-#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
+    code_p->y_u.xd.d[1]      = RepAppl(cpc->rnd1)[1];
     code_p->y_u.xd.d[2] = RepAppl(cpc->rnd1)[2];
+#if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
+    code_p->y_u.xd.d[3] = RepAppl(cpc->rnd1)[3];
+    code_p->y_u.xd.d[4] = RepAppl(cpc->rnd1)[4];
 #endif
   }
   GONEXT(xd);
@@ -1140,6 +1148,7 @@ inline static yamop *a_ri(op_numbers opcode, yamop *code_p, int pass_no,
     code_p->y_u.xi.x = emit_x(cpc->rnd2);
     code_p->y_u.xi.i[0] = (CELL)FunctorLongInt;
     code_p->y_u.xi.i[1] = RepAppl(cpc->rnd1)[1];
+    code_p->y_u.xi.i[2] = RepAppl(cpc->rnd1)[2];
   }
   GONEXT(xi);
   return code_p;
@@ -1384,14 +1393,7 @@ a_p(op_numbers opcode, clause_info *clinfo, yamop *code_p, int pass_no,
         if (Flags & UserCPredFlag) {
           code_p->opc = emit_op(_call_usercpred);
         } else {
-          if (RepPredProp(fe)->FunctorOfPred == FunctorExecuteInMod) {
-            code_p->y_u.Osbmp.mod = cip->cpc->rnd4;
-            code_p->opc = emit_op(_p_execute);
-          } else if (RepPredProp(fe)->FunctorOfPred == FunctorExecute2InMod) {
-            code_p->opc = emit_op(_p_execute2);
-          } else {
             code_p->opc = emit_op(_call_cpred);
-          }
         }
         code_p->y_u.Osbpp.s =
             emit_count(-Signed(RealEnvSize) - CELLSIZE * (cip->cpc->rnd2));
@@ -2508,6 +2510,9 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
         case _or:
           code_p->opc = emit_op(_p_or_y_vv);
           break;
+        case _xor:
+          code_p->opc = emit_op(_p_xor_y_vv);
+          break;
         case _sll:
           code_p->opc = emit_op(_p_sll_y_vv);
           break;
@@ -2558,6 +2563,11 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
           save_machine_regs();
           siglongjmp(cip->CompilerBotch, 1);
           break;
+        case _xor:
+          Yap_ThrowError(SYSTEM_ERROR_COMPILER, cmp_info->x1_arg,
+                    "internal assembler error CX for # (should be XC)");
+          save_machine_regs();
+          siglongjmp(cip->CompilerBotch, 1);
         case _sll:
           code_p->opc = emit_op(_p_sll_y_cv);
           break;
@@ -2600,6 +2610,9 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
           break;
         case _or:
           code_p->opc = emit_op(_p_or_y_vc);
+          break;
+        case _xor:
+          code_p->opc = emit_op(_p_xor_y_vc);
           break;
         case _sll:
           if ((Int)cmp_info->c_arg < 0) {
@@ -2657,6 +2670,9 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
         case _or:
           code_p->opc = emit_op(_p_or_vv);
           break;
+        case _xor:
+          code_p->opc = emit_op(_p_xor_vv);
+          break;
         case _sll:
           code_p->opc = emit_op(_p_sll_vv);
           break;
@@ -2709,6 +2725,12 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
           save_machine_regs();
           siglongjmp(cip->CompilerBotch, 1);
           break;
+        case _xor:
+          Yap_ThrowError(SYSTEM_ERROR_COMPILER, cmp_info->x1_arg,
+                    "internal assembler error CX for #/2");
+          save_machine_regs();
+          siglongjmp(cip->CompilerBotch, 1);
+          break;
         case _sll:
           code_p->opc = emit_op(_p_sll_cv);
           break;
@@ -2751,6 +2773,9 @@ static yamop *a_f2(cmp_op_info *cmp_info, yamop *code_p, int pass_no,
           break;
         case _or:
           code_p->opc = emit_op(_p_or_vc);
+          break;
+        case _xor:
+          code_p->opc = emit_op(_p_xor_vc);
           break;
         case _sll:
           if ((Int)cmp_info->c_arg < 0) {
@@ -2941,7 +2966,7 @@ static yamop *do_pass(int pass_no, yamop **entry_codep, int assembling,
           cl_u->sc.ClFlags |= HasCutMask;
         cl_u->sc.ClNext = NULL;
 	        cl_u->sc.ClSize = size;
-	    cl_u->sc.ClOwner = Yap_ConsultingFile(PASS_REGS1);
+		cl_u->sc.ClOwner = Yap_source_file_name();
         cl_u->sc.usc.ClLine = cip->pos;
         cl_u->sc.usc.ClSource = NULL;
         if (*clause_has_blobsp) {
@@ -3236,7 +3261,7 @@ static yamop *do_pass(int pass_no, yamop **entry_codep, int assembling,
                        clause_has_blobsp, code_p, pass_no, cip);
       break;
     case unify_last_string_op:
-      code_p = a_ustring(cip->cpc->rnd1, _unify_l_bigint, _unify_l_atom_write,
+      code_p = a_ustring(cip->cpc->rnd1, _unify_l_string, _unify_l_atom_write,
                          clause_has_blobsp, code_p, pass_no, cip);
       break;
     case unify_last_dbterm_op:
@@ -3694,7 +3719,7 @@ static DBTerm *fetch_clause_space(Term *tp, UInt size,
   /* This stuff should be just about fetching the space from the data-base,
      unfortunately we have to do all sorts of error handling :-( */
   HR = (CELL *)cip->freep;
-  while ((x = Yap_StoreTermInDBPlusExtraSpace(*tp, size, osizep)) == NULL) {
+   while ((x = Yap_StoreTermInDBPlusExtraSpace(*tp, size, osizep)) == NULL) {
 
     HR = h0;
     switch (LOCAL_Error_TYPE) {
@@ -3820,16 +3845,12 @@ yamop *Yap_assemble(int mode, Term t, PredEntry *ap, int is_fact,
     cl = (LogUpdClause *)((CODEADDR)x - (UInt)size);
     cl->lusl.ClSource = x;
     cl->ClFlags |= SrcMask;
-    x->ag.line_number = Yap_source_line_no();
+    x->ag.line_number =  Yap_source_line_no();
     cl->ClSize = osize;
-    cl->ClOwner = Yap_ConsultingFile(PASS_REGS1);
+    cl->ClOwner = Yap_source_file_name();
     cip->code_addr = (yamop *)cl;
   } else if (mode == ASSEMBLING_CLAUSE &&
-	      (ap->PredFlags &  MultiFileFlag ||
-	     (ap->cs.p_code.NOfClauses == 0 &&
-	      trueGlobalPrologFlag(SOURCE_FLAG)) ||
-	     (ap->cs.p_code.NOfClauses > 0 &&
-	       (ap->PredFlags &  SourcePredFlag)))  &&
+	     ap->PredFlags &  SourcePredFlag  &&
              !is_fact) {
     DBTerm *x;
     StaticClause *cl;
@@ -3847,7 +3868,7 @@ yamop *Yap_assemble(int mode, Term t, PredEntry *ap, int is_fact,
     cl->ClFlags |= SrcMask;
     x->ag.line_number = Yap_source_line_no();
     cl->ClSize = osize;
-
+    cl->ClPred =  cip->CurrentPred;
 
     LOCAL_ProfEnd = code_p;
     Yap_inform_profiler_of_clause(cl, LOCAL_ProfEnd, ap, GPROF_CLAUSE);
@@ -3874,7 +3895,8 @@ yamop *Yap_assemble(int mode, Term t, PredEntry *ap, int is_fact,
         cl->usc.ClLine = cip->pos;
         cl->ClSize = size;
         cl->ClFlags = 0;
-        Yap_ClauseSpace += size;
+	cl->ClPred = cip->CurrentPred;
+	Yap_ClauseSpace += size;
       }
     } else {
       if (ap->PredFlags & LogUpdatePredFlag) {
@@ -3888,54 +3910,3 @@ yamop *Yap_assemble(int mode, Term t, PredEntry *ap, int is_fact,
   return entry_code;
 }
 
-void Yap_InitComma(void) {
-  yamop *code_p = COMMA_CODE;
-  code_p->opc = opcode(_call);
-  code_p->y_u.Osbpp.s = emit_count(-Signed(RealEnvSize) - sizeof(CELL) * 3);
-  code_p->y_u.Osbpp.p = code_p->y_u.Osbpp.p0 =
-      RepPredProp(PredPropByFunc(FunctorComma, 0));
-  code_p->y_u.Osbpp.bmap = NULL;
-  GONEXT(Osbpp);
-  code_p->opc = opcode(_p_execute_tail);
-  code_p->y_u.Osbmp.s = emit_count(-Signed(RealEnvSize) - 3 * sizeof(CELL));
-  code_p->y_u.Osbmp.bmap = NULL;
-  code_p->y_u.Osbmp.mod = MkAtomTerm(AtomUser);
-  code_p->y_u.Osbmp.p0 = RepPredProp(PredPropByFunc(FunctorComma, 0));
-  GONEXT(Osbmp);
-  code_p->opc = emit_op(_deallocate);
-  code_p->y_u.p.p = PredMetaCall;
-  GONEXT(p);
-  code_p->opc = emit_op(_procceed);
-  code_p->y_u.p.p = PredMetaCall;
-  GONEXT(p);
-}
-
-yamop *Yap_InitCommaContinuation(PredEntry *pe) {
-  arity_t arity = pe->ArityOfPE, i;
-  yamop *code_p = NULL;
-
-  GONEXT(Osbmp);
-  for (i = 0; i < arity; i++)
-    GONEXT(yx);
-  GONEXT(Osbmp);
-pe->MetaEntryOfPred = code_p =
-Yap_AllocCodeSpace((size_t)code_p);
-  code_p->opc = opcode(_call);
-  code_p->y_u.Osbpp.s = emit_count(-Signed(RealEnvSize) - sizeof(CELL) * pe->ArityOfPE);
-  code_p->y_u.Osbpp.p =
-    code_p->y_u.Osbpp.p0 = PredMetaCall;
- code_p->y_u.Osbpp.bmap = NULL;
- GONEXT(Osbmp);
-  for (i = 0; i < arity; i++) {
-    code_p->opc = opcode(_put_y_var);
-    code_p->y_u.yx.y = -i - Signed(RealEnvSize) / sizeof(CELL);
-    code_p->y_u.yx.x = emit_xreg(i + 1);
-    GONEXT(yx);
-  }
-  code_p->opc = opcode(_dexecute);
-  code_p->y_u.Osbpp.p0 = PredMetaCall;
-  code_p->y_u.Osbpp.s = -Signed(RealEnvSize);
-  code_p->y_u.Osbpp.p = pe;
-  GONEXT(Osbpp);
-    return pe->MetaEntryOfPred;
-}

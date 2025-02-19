@@ -27,7 +27,7 @@
 
 
 
-:- system_module( '$_setof', [(^)/2,
+:- system_module_( '$_setof', [(^)/2,
         all/3,
         bagof/3,
         findall/3,
@@ -118,7 +118,6 @@ Similar to findall/3, but appends all answers to list  _L0_. Useful, if some ans
 findall(Template, Generator, Answers, SoFar) :-
      must_be_of_type( list_or_partial_list, Answers ),
      '$findall'(Template, Generator, SoFar, Answers).
-
 % starts by calling the generator,
 % and recording the answers
 '$findall'(Template, Generator, SoFar, Answers) :-
@@ -178,7 +177,7 @@ setof(Template, Generator, Set) :-
 	( '$is_list_or_partial_list'(Set) ->
 		true
 	;
-		throw_error(type_error(list,Set), setof(Template, Generator, Set))
+		throw_error(error,error(type_error(list,Set), setof(Template, Generator, Set)))
 	),
 	'$bagof'(Template, Generator, Bag),
 	'$sort'(Bag, Set).
@@ -217,7 +216,7 @@ bagof(Template, Generator, Bag) :-
 	( '$is_list_or_partial_list'(Bag) ->
 		true
 	;
-		throw_error(type_error(list,Bag), bagof(Template, Generator, Bag))
+		throw_error(error,error(type_error(list,Bag), bagof(Template, Generator, Bag)))
 	),
 	'$bagof'(Template, Generator, Bag).
 

@@ -20,15 +20,7 @@
 
 
     @file inlines.c
-
-    @defgroup YAP_Inlines Inlined Tests and Term Manipulation
-
-    @ingroup YAPTerms
-    @{
-
-
 */
-
 
 #define IN_INLINES_C 1
 
@@ -38,23 +30,11 @@
 
 #include "cut_c.h"
 
-static Int    p_atom( USES_REGS1 );
-static Int    p_atomic( USES_REGS1 );
-static Int    p_integer( USES_REGS1 );
-static Int    p_nonvar( USES_REGS1 );
-static Int    p_number( USES_REGS1 );
-static Int    p_var( USES_REGS1 );
-static Int    p_db_ref( USES_REGS1 );
-static Int    p_primitive( USES_REGS1 );
-static Int    p_compound( USES_REGS1 );
-static Int    p_float( USES_REGS1 );
-static Int    p_equal( USES_REGS1 );
-static Int    p_dif( USES_REGS1 );
-static Int    p_eq( USES_REGS1 );
-static Int    p_arg( USES_REGS1 );
-static Int    p_functor( USES_REGS1 );
-static Int    p_fail( USES_REGS1 );
-static Int    p_true( USES_REGS1 );
+/**
+   @addtogroup YAPControl
+
+   @{
+*/
 
 /** @pred  fail is iso
 
@@ -106,6 +86,216 @@ static Int    p_true( USES_REGS1 )
     return true;
 }
 
+
+static Term
+cp_as_integer(choiceptr cp USES_REGS)
+{
+  return(MkIntegerTerm(LCL0-(CELL *)cp));
+}
+
+
+static Int
+p_cut_by( USES_REGS1 )
+{
+  BEGD(d0);
+  d0 = ARG1;
+  deref_head(d0, cutby_x_unk);
+ cutby_x_nvar:
+#if YAPOR_SBA
+  if (!IsIntegerTerm(d0)) {
+#else
+  if (!IsIntTerm(d0)) {
+#endif
+    return(FALSE);
+  }
+  BEGCHO(pt0);
+#if YAPOR_SBA
+  pt0 = (choiceptr)IntegerOfTerm(d0);
+#else
+  pt0 = (choiceptr)(LCL0-IntOfTerm(d0));
+#endif
+#ifdef YAPOR
+    CUT_prune_to(pt0->cp_b);
+#endif /* YAPOR */
+  /* find where to cut to */
+    choiceptr b =B, ob=NULL;
+    if (pt0<=b || !b)
+      return true;
+    while (pt0 > b) {
+    /* Wow, we're gonna cut!!! */
+#ifdef TABLING
+    abolish_incomplete_subgoals(B);
+#endif /* TABLING */
+    //B = pt0;
+    ob = b;
+    b = b->cp_b;
+ 
+   }
+    B=ob;
+  
+    HB = b->cp_h;
+    Yap_TrimTrail();
+    //
+    B=ob->cp_b;
+    ENDCHO(pt0);
+  return(TRUE);
+
+  BEGP(pt0);
+  deref_body(d0, pt0, cutby_x_unk, cutby_x_nvar);
+  /* never cut to a variable */
+  /* Abort */
+  return(FALSE);
+  ENDP(pt0);
+  ENDD(d0);
+}
+
+  /** @pred cut_at(+ChoicePoint)
+     Drop the alternatives at _ChoicePoint_ from the search tree.
+  */
+static Int
+p_cut_at( USES_REGS1 )
+{
+  BEGD(d0);
+  d0 = ARG1;
+  deref_head(d0, cutby_x_unk);
+ cutby_x_nvar:
+#if YAPOR_SBA
+  if (!IsIntegerTerm(d0)) {
+#else
+  if (!IsIntTerm(d0)) {
+#endif
+    return false;
+  }
+  BEGCHO(pt0);
+#if YAPOR_SBA
+  pt0 = (choiceptr)IntegerOfTerm(d0);
+#else
+  pt0 = (choiceptr)(LCL0-IntOfTerm(d0));
+#endif
+  if (pt0==B) {
+    /* Wow, we're gonna cut!!! */
+#ifdef TABLING
+    abolish_incomplete_subgoals(B);
+#endif /* TABLING */
+    //B = pt0;
+#ifdef YAPOR
+    CUT_prune_to(pt0);
+#endif /* YAPOR */
+    HB = B->cp_h;
+    Yap_TrimTrail();
+    B=B->cp_b;
+    return true;
+  }
+    /* find where to cut to */
+  choiceptr b = B, ob = NULL;
+  while (pt0 > b && pt0 && B) {
+    ob = b ;
+    b = b->cp_b;
+  }
+  if (pt0<b)
+    return true;
+if (ob)
+    ob->cp_b = pt0->cp_b;
+  pt0->cp_ap = TRUSTFAILCODE;
+  return true;
+  ENDCHO(pt0);
+  
+  BEGP(pt0);
+  deref_body(d0, pt0, cutby_x_unk, cutby_x_nvar);
+  /* never cut to a variable */
+  /* Abort */
+  return(FALSE);
+  ENDP(pt0);
+  ENDD(d0);
+  }
+
+static Int
+p_erroneous_call( USES_REGS1 )
+{
+  Yap_ThrowError(SYSTEM_ERROR_INTERNAL, TermNil, "bad call to internal built-in");
+  return(FALSE);
+}
+
+/** @pred current_choice_point( -CP )
+ *
+ * unify the logic variable _CP_ with a number that gives the offset of the
+ * current choice-point. This number is only valid as long as we do not
+ *backtrack by or cut
+ * _CP_, and is safe in the presence of stack shifting and/or garbage
+ *collection.
+ */
+static Int current_choice_point(USES_REGS1)
+{
+  Term t = Deref(ARG1);
+  Term td;
+#if SHADOW_HB
+  register CELL *HBREG = HB;
+#endif
+  if (!IsVarTerm(t))
+    return false;
+  choiceptr b = B;
+  while (b && b->cp_ap == TRUSTFAILCODE && b->cp_b)
+    b = b->cp_b;
+  td = cp_as_integer(b PASS_REGS);
+  YapBind((CELL *)t, td);
+  return true;
+}
+
+/** @pred current_choice_point( -CP )
+ *
+ * unify the logic variable _CP_ with a number that gives the offset of the
+ * current choice-point. This number is only valid as long as we do not
+ *backtrack by or cut
+ * _CP_, and is safe in the presence of stack shifting and/or garbage
+ *collection.
+ */
+static Int parent_choice_point(USES_REGS1)
+{
+  Term t = Deref(ARG1);
+  Term td;
+#if SHADOW_HB
+  register CELL *HBREG = HB;
+#endif
+  if (!IsVarTerm(t))
+    return false;
+  choiceptr b = B;
+  while (b<=(choiceptr)ENV) b = b->cp_b;
+  while (b && b->cp_ap == TRUSTFAILCODE && b->cp_b)
+    b = b->cp_b;
+  td = cp_as_integer(b PASS_REGS);
+  YapBind((CELL *)t, td);
+  return true;
+}
+
+/// @}
+
+/**
+    @defgroup YAP_Inlines Inlined Tests and Term Manipulation
+
+    @ingroup YAPTerms
+    @{
+
+
+*/
+
+
+static Int    p_atom( USES_REGS1 );
+static Int    p_atomic( USES_REGS1 );
+static Int    p_integer( USES_REGS1 );
+static Int    p_nonvar( USES_REGS1 );
+static Int    p_number( USES_REGS1 );
+static Int    p_var( USES_REGS1 );
+static Int    p_db_ref( USES_REGS1 );
+static Int    p_primitive( USES_REGS1 );
+static Int    p_compound( USES_REGS1 );
+static Int    p_float( USES_REGS1 );
+static Int    p_equal( USES_REGS1 );
+static Int    p_dif( USES_REGS1 );
+static Int    p_eq( USES_REGS1 );
+static Int    p_arg( USES_REGS1 );
+static Int    p_functor( USES_REGS1 );
+static Int    p_fail( USES_REGS1 );
+static Int    p_true( USES_REGS1 );
 
 /** @pred  atom( _T_) is iso
 
@@ -676,7 +866,7 @@ p_dif( USES_REGS1 )
 }
 
 
-/** @pred  arg(+ _N_,+ _T_, _A_) is iso
+/** @pred  arg(+_N_,+_T_,-_A_) is iso
 
 
 Succeeds if the argument  _N_ of the term  _T_ unifies with
@@ -695,21 +885,26 @@ p_arg( USES_REGS1 )
 #if SHADOW_HB
       register CELL *HBREG = HB;
 #endif
+      Int i;
       BEGD(d0);
       d0 = ARG1;
       deref_head(d0, arg_arg1_unk);
     arg_arg1_nvar:
       /* ARG1 is ok! */
       if (IsIntTerm(d0))
-	d0 = IntOfTerm(d0);
+	i = IntOfTerm(d0);
       else if (IsLongIntTerm(d0)) {
-	d0 = LongIntOfTerm(d0);
+	i = LongIntOfTerm(d0);
       } else {
 	if (!IsBigIntTerm( d0 ))
-	  Yap_Error(TYPE_ERROR_INTEGER,d0,"arg 1 of arg/3");
+	  Yap_ThrowError(TYPE_ERROR_INTEGER,d0,"arg 1 of arg/3");
 	return(FALSE);
       }
-
+      if (i<0)
+	{
+	  Yap_ThrowError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO, d0, "arg 1 of arg/3");
+	  return false;
+	}
       /* d0 now got the argument we want */
       BEGD(d1);
       d1 = ARG2;
@@ -722,16 +917,16 @@ p_arg( USES_REGS1 )
 	pt0 = RepAppl(d1);
 	d1 = *pt0;
 	if (IsExtensionFunctor((Functor) d1)) {
-	  Yap_Error(TYPE_ERROR_COMPOUND, d1, "arg 2 of arg/3");
+	  Yap_ThrowError(TYPE_ERROR_COMPOUND, d1, "arg 2 of arg/3");
 	  return(FALSE);
 	}
 	save_hb();
-	if ((Int)d0 <= 0 ||
-	    (Int)d0 > ArityOfFunctor((Functor) d1) ||
-	    Yap_IUnify(pt0[d0], ARG3) == FALSE) {
+	if (i <= 0 ||
+	    i > ArityOfFunctor((Functor) d1) ||
+	    Yap_IUnify(pt0[i], ARG3) == FALSE) {
 	  /* don't complain here for Prolog compatibility
-	  if ((Int)d0 <= 0) {
-	    Yap_Error(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,
+	  if (i <= 0) {
+	    Yap_ThrowError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,
 		  MkIntegerTerm(d0),"arg 1 of arg/3");
 	  }
 	  */
@@ -758,35 +953,35 @@ p_arg( USES_REGS1 )
 	  return(TRUE);
 	}
 	else {
-	  if ((Int)d0 < 0)
-	    Yap_Error(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,
+	  if (i < 0)
+	    Yap_ThrowError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,
 		  MkIntegerTerm(d0),"arg 1 of arg/3");
 	  return(FALSE);
 	}
 	ENDP(pt0);
       }
       else {
-	Yap_Error(TYPE_ERROR_COMPOUND, d1, "arg 2 of arg/3");
+	Yap_ThrowError(TYPE_ERROR_COMPOUND, d1, "arg 2 of arg/3");
 	return(FALSE);
       }
 
       BEGP(pt0);
       deref_body(d1, pt0, arg_arg2_unk, arg_arg2_nvar);
-      Yap_Error(INSTANTIATION_ERROR,(CELL)pt0,"arg 2 of arg/3");;
+      Yap_ThrowError(INSTANTIATION_ERROR,(CELL)pt0,"arg 2 of arg/3");;
       ENDP(pt0);
       return(FALSE);
       ENDD(d1);
 
       BEGP(pt0);
       deref_body(d0, pt0, arg_arg1_unk, arg_arg1_nvar);
-      Yap_Error(INSTANTIATION_ERROR,(CELL)pt0,"arg 1 of arg/3");;
+      Yap_ThrowError(INSTANTIATION_ERROR,(CELL)pt0,"arg 1 of arg/3");;
       ENDP(pt0);
       return(FALSE);
       ENDD(d0);
 
 }
 
-/** @pred  functor( _T_, _F_, _N_) is iso
+/** @pred  functor(_T_,_F_,_N_) is iso
 
 
 The top functor of term  _T_ is named  _F_ and has  arity  _N_.
@@ -811,10 +1006,6 @@ p_functor( USES_REGS1 )			/* functor(?,?,?) */
 {
 #if SHADOW_HB
   register CELL *HBREG;
-#endif
-
- restart:
-#if SHADOW_HB
   HBREG = HB;
 #endif
   BEGD(d0);
@@ -911,14 +1102,14 @@ p_functor( USES_REGS1 )			/* functor(?,?,?) */
     d1 = IntegerOfTerm(d1);
   else {
     if (IsBigIntTerm(d1)) {
-      Yap_Error(RESOURCE_ERROR_STACK, ARG3, "functor/3");
+      Yap_ThrowError(RESOURCE_ERROR_STACK, ARG3, "functor/3");
     } else {
-      Yap_Error(TYPE_ERROR_INTEGER,ARG3,"functor/3");
+      Yap_ThrowError(TYPE_ERROR_INTEGER,ARG3,"functor/3");
     }
-    return(FALSE);
+    return false;
   }
   if (!IsAtomicTerm(d0)) {
-    Yap_Error(TYPE_ERROR_ATOMIC,d0,"functor/3");
+    Yap_ThrowError(TYPE_ERROR_ATOMIC,d0,"functor/3");
     return(FALSE);
   }
   /* We made it!!!!! we got in d0 the name, in d1 the arity and
@@ -932,25 +1123,23 @@ p_functor( USES_REGS1 )			/* functor(?,?,?) */
   else if ((Int)d1 > 0) {
     /* now let's build a compound term */
     if (!IsAtomTerm(d0)) {
-      Yap_Error(TYPE_ERROR_ATOM,d0,"functor/3");
+      Yap_ThrowError(TYPE_ERROR_ATOM,d0,"functor/3");
       return(FALSE);
     }
+    if (d1>32
+	)
+    while (HR+d1 > ASP - StackGap( PASS_REGS1 )) {
+      if (!Yap_dogc()  ) {
+	Yap_ThrowError(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
+	return false;
+      }
+      pt0 = VarOfTerm(Deref(ARG1));
+    }
+    d0 = (CELL) Yap_MkFunctor(AtomOfTerm(d0), (Int) d1);
     BEGP(pt1);
-    if (!IsAtomTerm(d0)) {
-      return(FALSE);
-    }
-    else
-      d0 = (CELL) Yap_MkFunctor(AtomOfTerm(d0), (Int) d1);
     pt1 = HR;
     *pt1++ = d0;
     d0 = AbsAppl(HR);
-    while (pt1+d1 > ENV - StackGap( PASS_REGS1 )) {
-      if (!Yap_dogc(PASS_REGS1)) {
-	Yap_Error(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
-	return FALSE;
-      }
-      goto restart;
-    }
     while (d1-- > 0) {
       RESET_VARIABLE(pt1);
       pt1++;
@@ -959,13 +1148,13 @@ p_functor( USES_REGS1 )			/* functor(?,?,?) */
     HR = pt1;
     ENDP(pt1);
   } else if ((Int)d1  < 0) {
-    Yap_Error(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,MkIntegerTerm(d1),"functor/3");
-    return(FALSE);
+    Yap_ThrowError(DOMAIN_ERROR_NOT_LESS_THAN_ZERO,MkIntegerTerm(d1),"functor/3");
+    return false;
   }
   /* else if arity is 0 just pass d0 through */
   /* Ding, ding, we made it */
   YapBind(pt0, d0);
-  return(TRUE);
+  return true;
 
 
   BEGP(pt1);
@@ -985,93 +1174,9 @@ p_functor( USES_REGS1 )			/* functor(?,?,?) */
   return(FALSE);
   ENDP(pt0);
   ENDD(d0);
+
 }
 
-static Term
-cp_as_integer(choiceptr cp USES_REGS)
-{
-  return(MkIntegerTerm(LCL0-(CELL *)cp));
-}
-
-
-static Int
-p_cut_by( USES_REGS1 )
-{
-  BEGD(d0);
-  d0 = ARG1;
-  deref_head(d0, cutby_x_unk);
- cutby_x_nvar:
-#if YAPOR_SBA
-  if (!IsIntegerTerm(d0)) {
-#else
-  if (!IsIntTerm(d0)) {
-#endif
-    return(FALSE);
-  }
-  BEGCHO(pt0);
-#if YAPOR_SBA
-  pt0 = (choiceptr)IntegerOfTerm(d0);
-#else
-  pt0 = (choiceptr)(LCL0-IntOfTerm(d0));
-#endif
-#ifdef YAPOR
-    CUT_prune_to(pt0);
-#endif /* YAPOR */
-  /* find where to cut to */
-    while (pt0 > B) {
-    /* Wow, we're gonna cut!!! */
-#ifdef TABLING
-    abolish_incomplete_subgoals(B);
-#endif /* TABLING */
-    //B = pt0;
-      B = B->cp_b;
-    }
-  
-    HB = B->cp_h;
-    Yap_TrimTrail();
-    ENDCHO(pt0);
-  return(TRUE);
-
-  BEGP(pt0);
-  deref_body(d0, pt0, cutby_x_unk, cutby_x_nvar);
-  /* never cut to a variable */
-  /* Abort */
-  return(FALSE);
-  ENDP(pt0);
-  ENDD(d0);
-}
-
-static Int
-p_erroneous_call( USES_REGS1 )
-{
-  Yap_Error(SYSTEM_ERROR_INTERNAL, TermNil, "bad call to internal built-in");
-  return(FALSE);
-}
-
-/** @pred current_choice_point( -CP )
- *
- * unify the logic variable _CP_ with a number that gives the offset of the
- * current choice-point. This number is only valid as long as we do not
- *backtrack by or cut
- * _CP_, and is safe in the presence of stack shifting and/or garbage
- *collection.
- */
-static Int current_choice_point(USES_REGS1)
-{
-  Term t = Deref(ARG1);
-  Term td;
-#if SHADOW_HB
-  register CELL *HBREG = HB;
-#endif
-  if (!IsVarTerm(t))
-    return false;
-  choiceptr b = B;
-  while (b && b->cp_ap == TRUSTFAILCODE && b->cp_b)
-    b = b->cp_b;
-  td = cp_as_integer(b PASS_REGS);
-  YapBind((CELL *)t, td);
-  return true;
-}
 
  /// @}
 
@@ -1115,11 +1220,11 @@ static Int current_choice_point(USES_REGS1)
      }
    }
    if (IsVarTerm(t1)) {
-     Yap_Error(INSTANTIATION_ERROR,t1,"genarg/3");
+     Yap_ThrowError(INSTANTIATION_ERROR,t1,"genarg/3");
     return FALSE;
   }
   if (IsPrimitiveTerm(t1)) {
-    Yap_Error(TYPE_ERROR_COMPOUND,t1,"genarg/3");
+    Yap_ThrowError(TYPE_ERROR_COMPOUND,t1,"genarg/3");
     return FALSE;
   }
   if (IsPairTerm(t1)) {
@@ -1175,36 +1280,35 @@ cont_genarg( USES_REGS1 )
  void
    Yap_InitInlines(void)
  {
-   CACHE_REGS
-     Term cm = CurrentModule;
-   Yap_InitCPred("cut_by", 1, p_cut_by, SafePredFlag);
+      Yap_InitCPred("cut_by", 1, p_cut_by, SafePredFlag);
    Yap_InitCPred("cut_to", 1, p_cut_by, SafePredFlag);
-   Yap_InitAsmPred("_cut_by", 1, _cut_by, p_cut_by, SafePredFlag);
+   Yap_InitCPred("cut_at", 1, p_cut_at,SafePredFlag);
+   //Yap_InitAsmPred("cut_by", 1, _cut_by, p_cut_by, SafePredFlag);
    Yap_InitAsmPred("current_choice_point", 1, _save_by, current_choice_point, SafePredFlag);
-   Yap_InitAsmPred("atom", 1, _atom, p_atom, SafePredFlag);
-   Yap_InitAsmPred("atomic", 1, _atomic, p_atomic, SafePredFlag);
-   Yap_InitAsmPred("integer", 1, _integer, p_integer, SafePredFlag);
-   Yap_InitAsmPred("nonvar", 1, _nonvar, p_nonvar, SafePredFlag);
-   Yap_InitAsmPred("number", 1, _number, p_number, SafePredFlag);
-   Yap_InitAsmPred("var", 1, _var, p_var, SafePredFlag);
-   Yap_InitAsmPred("db_reference", 1, _db_ref, p_db_ref, SafePredFlag);
-   Yap_InitAsmPred("primitive", 1, _primitive, p_primitive, SafePredFlag);
-   Yap_InitAsmPred("compound", 1, _compound, p_compound, SafePredFlag);
-   Yap_InitAsmPred("float", 1, _float, p_float, SafePredFlag);
+   Yap_InitCPred("parent_choice_point", 1, parent_choice_point, SafePredFlag);
+   Yap_InitAsmPred("atom", 1, _atom, p_atom, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("atomic", 1, _atomic, p_atomic, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("integer", 1, _integer, p_integer, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("nonvar", 1, _nonvar, p_nonvar, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("number", 1, _number, p_number, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("var", 1, _var, p_var, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("db_reference", 1, _db_ref, p_db_ref, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("primitive", 1, _primitive, p_primitive, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("compound", 1, _compound, p_compound, TestPredFlag|SafePredFlag);
+   Yap_InitAsmPred("float", 1, _float, p_float, TestPredFlag|SafePredFlag);
    Yap_InitAsmPred("=", 2, _equal, p_equal, SafePredFlag);
 #if INLINE_BIG_COMPARISONS
-   Yap_InitAsmPred("\\=", 2, _dif, p_dif, SafePredFlag|TestPredFlag);
-   Yap_InitAsmPred("==", 2, _eq, p_eq, SafePredFlag|TestPredFlag);
+   Yap_InitAsmPred("\\=", 2, _dif, p_dif, TestPredFlag|SafePredFlag|TestPredFlag);
+   Yap_InitAsmPred("==", 2, _eq, p_eq, TestPredFlag|SafePredFlag|TestPredFlag);
 #else
-   Yap_InitCPred("\\=", 2, p_dif, SafePredFlag);
-   Yap_InitCPred("==", 2, p_eq, SafePredFlag);
+   Yap_InitCPred("\\=", 2, p_dif, TestPredFlag|SafePredFlag);
+   Yap_InitCPred("==", 2, p_eq, TestPredFlag|SafePredFlag);
 #endif
    Yap_InitAsmPred("arg", 3, _arg, p_arg, SafePredFlag);
-   Yap_InitAsmPred("functor", 3, _functor, p_functor, 0);
+     Yap_InitCPred("functor", 3, p_functor, 0);
+     //   Yap_InitAsmPred("functor", 3, _functor, p_functor, 0);
    Yap_InitAsmPred("$label_ctl", 2, _p_label_ctl, p_erroneous_call, SafePredFlag);
-   CurrentModule = ARG_MODULE;
-   Yap_InitCPredBack("genarg", 3, 3, genarg, cont_genarg,SafePredFlag);
-   CurrentModule = cm;
+   Yap_InitCPredBackInModule("genarg", 3, 3, genarg, cont_genarg,SafePredFlag, ARG_MODULE);
      Yap_InitCPred("true", 0, p_true, SafePredFlag);
      Yap_InitCPred("otherwise", 0, p_true, SafePredFlag);
      Yap_InitCPred("false", 0, p_fail, SafePredFlag);

@@ -4,35 +4,61 @@
 
 :- use_module(library(gecode/clpfd)).
 :- use_module(library(maplist)).
+:- use_module(library(matrix)).
 
 main :-
-    ex(Ex, _),
-    sudoku(Ex, _My),
-	fail.
+    problem(Ex, My),
+    output(Ex, My).
 main.
 
-sudoku( Ex, Els ) :-
-	problem(Ex, Els),
-	output(Els).
+sudoku( Ex, M ) :-
+	problem(Ex, M),
+	output(Ex,M).
 
 %
 % gecode constraints
 %
-problem(Ex, Els) :-
-	length(Els, 81),
-	Els ins 1..9,
-	M <== matrix( Els, [dim=[9,9]] ),
-	% select rows
-	foreach( I in 0..8 , all_different(M[I,_]) ),
-	% select cols
-	foreach( J in 0..8,  all_different(M[_,J]) ),
-	% select squares
-	foreach( [I,J] ins 0..2 ,
-           all_different(M[I*3+(0..2),J*3+(0..2)]) ),
-	ex(Ex, Els),
-%	maplist( bound, Els, Exs),
-	labeling( [], Els ).
+problem(Ex, M) :-
+    ex(Ex,Info),
+     gecode_clpfd:init_gecode(Space,new),
+   length(Els, 81),
+    Els ins 1..9,
+    M <== matrix[9,9] of Els,
+    % select rows
+    Z <== zeros[9],
+    Q <== zeros[3,3],
+    matrix_map( row(M), Z ),
+    matrix_map( col(M), Z ),
+    matrix_map(sqr(M), Q ), 
+  %  maplist(bind,Els,Info),
+    %	maplist( bound, Els, Exs),
+    Els=Info,
+    labeling( [], Els ),
+ gecode_clpfd:close_gecode(Space, Els,new).
 
+bind(V,C) :- number(C), !,V #= C.
+bind(V,V).
+
+sqr(M,Q,[I,J]) :-
+    matrix_foldl(sqrdiff(M,[I,J]),Q,[],Els),
+all_different(Els).
+
+sqrdiff(M,[I,J],_,Els,[V|Els],[A,B]) :-
+    V <== M[I*3+A, J*3+B].
+
+row(M, Z, [I]) :-
+    matrix_foldl(col1(M,I),Z,[],Vs),
+    all_different(Vs).
+
+col1(M,I,_Z,Els,[V|Els],[J]) :-
+    V <== M[I,J].
+
+col(M, Z, [I]) :-
+    matrix_foldl(row1(M,I),Z,[],Vs),
+    all_different(Vs).
+
+row1(M,I,_Z,Els,[V|Els],[J]) :-
+    V <== M[J,I].
 
 % The gecode interface doesn't support wake-ups on binding constained variables, this is the closest.
 %
@@ -42,21 +68,21 @@ bound(El, X) :-
 %
 % output using matrix library
 %
-output(Els) :-
-	M <== matrix( Els, [dim=[9,9]] ),
-	foreach( I in 0..2 , output(M, I) ),
-	output_line.
+output(Ex,M) :-
+    maplist(output3(M),[0,1,2]),
+    output_line.
 
-output(M, I) :-
+output3(M, I) :-
 	output_line,
-	foreach( J in 0..2 , output_row(M, J+I*3) ).
+    maplist(output_row(M,I),[0,1,2]).
 
-output_row( M, Row ) :-
-	L <== M[Row,_],
-	format('| ~d ~d ~d | ~d ~d ~d | ~d ~d ~d |~n', L).
+output_row( M, I, J ) :-
+    Row is I*3+J,
+    L <== M[Row,_],
+    format('| ~d ~d ~d | ~d ~d ~d | ~d ~d ~d |~n', L).
 
 output_line :-
-	format(' ~|~`-t~24+~n', []).
+    format(' ~|~`-t~24+~n', []).
 
 ex( 1, [
             _,6,_,1,_,4,_,5,_,

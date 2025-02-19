@@ -213,16 +213,17 @@
 
 % switch on all the checks to reduce bug searching time
 :- style_check(all).
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 
 % load modules from the YAP library
 :- use_module(library(lists), [max_list/2, min_list/2, sum_list/2]).
 :- use_module(library(system), [file_exists/1, shell/2]).
 
 % load our own modules
-:- reexport(problog).
+:- reexport('problog').
 :- reexport('problog/logger').
 :- reexport('problog/flags').
+%:- reexport('problog/math').
 :- use_module('problog/os').
 :- use_module('problog/print_learning').
 :- use_module('problog/utils_learning').
@@ -245,11 +246,11 @@
 :- dynamic(query_is_similar/2).
 :- dynamic(query_md5/3).
 
-:- multifile(user:train_example/4).
+:- multifile(user:example/4).
 :- multifile(user:problog_drop_example/1).
-user:train_example(A,B,C,=) :-
-	current_predicate(user:train_example/3),
-	user:train_example(A,B,C),
+user:example(A,B,C,=) :-
+	current_predicate(user:example/3),
+	user:example(A,B,C),
 	\+  user:problog_drop_example(B).
 
 :- multifile(user:test_example/4).
@@ -282,7 +283,7 @@ check_examples :-
 	% Check example IDs
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	(
-	 (user:train_example(ID,_,_,_), \+ atomic(ID))
+	 (user:example(ID,_,_,_), \+ atomic(ID))
 	->
 	 (
 	  format(user_error,'The example id of training example ~q ',[ID]),
@@ -305,7 +306,7 @@ check_examples :-
 	% Check example probabilities
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	(
-	 (user:train_example(ID,_,P,_), (\+ number(P); P>1 ; P<0))
+	 (user:example(ID,_,P,_), (\+ number(P); P>1 ; P<0))
 	->
 	 (
 	  format(user_error,'The training example ~q does not have a valid probability value (~q).~n',[ID,P]),
@@ -330,8 +331,8 @@ check_examples :-
 	(
 	 (
 	  (
-	   user:train_example(ID,QueryA,_,_),
-	   user:train_example(ID,QueryB,_,_),
+	   user:example(ID,QueryA,_,_),
+	   user:example(ID,QueryB,_,_),
 	   QueryA \= QueryB
 	  ) ;
 
@@ -342,7 +343,7 @@ check_examples :-
 	  );
 
 	  (
-	   user:train_example(ID,QueryA,_,_),
+	   user:example(ID,QueryA,_,_),
 	   user:test_example(ID,QueryB,_,_),
 	   QueryA \= QueryB
 	  )
@@ -385,7 +386,7 @@ do_learning(Iterations) :-
 	do_learning(Iterations,-1).
 
 do_learning(Iterations,Epsilon) :-
-	current_predicate(user:train_example/4),
+	current_predicate(user:example/4),
 	!,
 	integer(Iterations),
 	number(Epsilon),
@@ -405,14 +406,12 @@ do_learning_intern(Iterations,Epsilon) :-
 	NextIteration is CurrentIteration+1,
 	assertz(current_iteration(NextIteration)),
 	EndIteration is CurrentIteration+Iterations-1,
-
 	format_learning(1,'~nIteration ~d of ~d~n',[CurrentIteration,EndIteration]),
 	logger_set_variable(iteration,CurrentIteration),
 	logger_start_timer(duration),
 	mse_testset,
 	ground_truth_difference,
 	gradient_descent,
-
 	problog_flag(log_frequency,Log_Frequency),
 
 	(
@@ -534,7 +533,7 @@ init_learning :-
 	succeeds_n_times(user:test_example(_,_,_,_),TestExampleCount),
 	format_learning(3,'~q test examples~n',[TestExampleCount]),
 
-	succeeds_n_times(user:train_example(_,_,_,_),TrainingExampleCount),
+	succeeds_n_times(user:example(_,_,_,_),TrainingExampleCount),
 	assertz(example_count(TrainingExampleCount)),
 	format_learning(3,'~q training examples~n',[TrainingExampleCount]),
 
@@ -553,14 +552,14 @@ init_learning :-
 	 problog_flag(alpha,auto)
 	->
 	 (
-	  user:train_example(_,_,P,_),
+	  user:example(_,_,P,_),
 	  P<1,
 	  P>0
 	 ->
 	  set_problog_flag(alpha,1.0);
 	  (
-	   succeeds_n_times((user:train_example(_,_,P,=),P=:=1.0),Pos_Count),
-	   succeeds_n_times((user:train_example(_,_,P,=),P=:=0.0),Neg_Count),
+	   succeeds_n_times((user:example(_,_,P,=),P=:=1.0),Pos_Count),
+	   succeeds_n_times((user:example(_,_,P,=),P=:=0.0),Neg_Count),
 	   Alpha is Pos_Count/Neg_Count,
 	   set_problog_flag(alpha,Alpha)
 	  )
@@ -594,7 +593,7 @@ init_learning :-
 init_queries :-
 	format_learning(2,'Build BDDs for examples~n',[]),
 	forall(user:test_example(ID,Query,_Prob,_),init_one_query(ID,Query,test)),
-	forall(user:train_example(ID,Query,_Prob,_),init_one_query(ID,Query,training)).
+	forall(user:example(ID,Query,_Prob,_),init_one_query(ID,Query,training)).
 
 bdd_input_file(Filename) :-
 	problog_flag(output_directory,Dir),
@@ -663,9 +662,10 @@ update_values :-
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% delete old values
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	retractall(query_probability_intern(_,_)),
-	retractall(query_gradient_intern(_,_,_,_)),
 
+    retractall(query_probability_intern(_,_)),
+       retractall(query_gradient_intern(_,_,_,_)),
+ 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	% start write current probabilities to file
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -736,7 +736,7 @@ update_query(QueryID,Symbol,What_To_Update) :-
 	  problog_flag(sigmoid_slope,Slope),
 	  ((What_To_Update=all;query_is_similar(_,QueryID)) -> Method='g' ; Method='l'),
 	  convert_filename_to_problog_path('simplecudd', Simplecudd),
-	  atomic_concat([Simplecudd,
+	  atomic_concat([simplecudd,
 			 ' -i "', Probabilities_File, '"',
 			 ' -l "', Query_Directory,'/query_',QueryID, '"',
 			 ' -m ', Method,
@@ -902,7 +902,7 @@ mse_trainingset_only_for_linesearch(MSE) :-
 	example_count(Example_Count),
 
 	bb_put(error_train_line_search,0.0),
-	forall(user:train_example(QueryID,_Query,QueryProb,Type),
+	forall(user:example(QueryID,_Query,QueryProb,Type),
 	       (
 		once(update_query(QueryID,'.',probability)),
 		query_probability(QueryID,CurrentProb),
@@ -923,11 +923,11 @@ mse_trainingset_only_for_linesearch(MSE) :-
 	format_learning(3,' (~8f)~n',[MSE]),
 	retractall(values_correct).
 
+
 mse_testset :-
 	current_iteration(Iteration),
 	create_test_predictions_file_name(Iteration,File_Name),
-	open(File_Name,'write',Handle),
-	writeln(mse:Handle),
+	open(File_Name, write,Handle),
 	format(Handle,"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%~n",[]),
 	format(Handle,"% Iteration, train/test, QueryID, Query, GroundTruth, Prediction %~n",[]),
 	format(Handle,"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%~n",[]),
@@ -953,7 +953,6 @@ mse_testset :-
 		),
 		AllSquaredErrors),
 
-	writeln(mse_close:Handle),
         close(Handle),
 	bb_delete(llh_test_queries,LLH_Test_Queries),
 
@@ -1146,7 +1145,7 @@ gradient_descent :-
 	logger_set_variable(alpha,Alpha),
 	example_count(Example_Count),
 
-	forall(user:train_example(QueryID,Query,QueryProb,Type),
+	forall(user:example(QueryID,Query,QueryProb,Type),
 	       (
 		once(update_query(QueryID,'.',all)),
 		query_probability(QueryID,BDDProb),

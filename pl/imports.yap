@@ -12,7 +12,7 @@
 
 /**
  *
- * @ file imports.yap
+ * @file imports.yap
  * 
  * this file implements search for available predicates for the current module. Search can be called
  * at compile-time or at run-time.
@@ -37,16 +37,17 @@
 '$pred_graph_edge'(_:G,ExportingModuleI:G)  :-
     current_prolog_flag(default_parent_module, ExportingModuleI),
     '$module'( _, ExportingModuleI, _, Exports),
-    '$member'(G, Exports).
+    member(G, Exports).
 % parent module mechanism
 '$pred_graph_edge'(ImportingMod:G, ExportingModI:G ) :-  
     '$parent_module'(ImportingMod,ExportingModI),
-    '$module'( _, ExportingModI, _, Exports),
-    '$member'(G, Exports).
+    '$modul_decls'( _, ExportingModI, _, Exports),
+    member(G, Exports).
   % autoload
+/*
 '$pred_graph_edge'(_ImportingMod:G, ExportingModI:G ) :-  
     recorded('$dialect',swi,_),
-    prolog_flag(autoload, true),
+    set_prolog_flag(autoload, true),
     prolog_flag(unknown, _OldUnk, fail),
     (
 	'$module'( _, autoloader, _, _Exports)
@@ -58,27 +59,26 @@
     true
     ),
     autoload(G, _File, ExportingModI).
+*/
 
 '$pred_path'(V:G, _Visited, _G)  :-
     (var(V);var(G)),
     !,
     fail.
-'$pred_path'(_:G, _Visited, prolog:G)  :-
-    '$pred_exists'(G, prolog),
-    !.
 '$pred_path'(Mod:G, _Visited, Mod:G)  :-
     '$pred_exists'(G, Mod),
+    \+ '$is_proxy_predicate'(G,Mod),
     !.
 '$pred_path'(G1, V,GF)  :-
     '$pred_graph_edge'(G1, G2),
-    \+ '$member'(G2,V),
+    \+ member(G2,V),
     '$pred_path'(G2, [G2|V], GF).
 
 
 '$pred_candidate'(Mod:G, _Visited, Mod:G).
 '$pred_candidate'(G1, V,GF)  :-
     '$pred_graph_edge'(G1, G2),
-    \+ '$member'(G2,V),
+    \+ member(G2,V),
     '$pred_candidate'(G2, [G2|V], GF).
 
 
@@ -86,8 +86,11 @@
     '$pred_path'(MG,[MG],NMG).
 
 '$import_chain'(ImportingM,G,M0,G0) :-
-    '$import'(ExportingM1,ImportingM,G1,G,_,_), 
+    '$import'(ExportingM1,ImportingM,G1,G,_,_),
+    !,
     '$import_chain'(ExportingM1,G1,M0,G0).
+ '$import_chain'(M0,G0,M0,G0).
 
 
+%% @}
 

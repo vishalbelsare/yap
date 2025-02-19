@@ -24,7 +24,7 @@ marg.T
 
 :- ensure_loaded(library(matlab)).
 
-:- yap_flag(write_strings, on).
+:- set_prolog_flag(write_strings, on).
 
 % syntactic sugar for matlab_call.
 :- op(800,yfx,<--).
@@ -49,7 +49,7 @@ do(Out,Out2) :-
 	mkevidence(N,[W-2]),
 	marg <-- marginal_nodes(engine, S),
 	matlab_get_variable( marg.'T', Out),
-v	add_evidence([R-2]),
+	add_evidence([R-2]),
 	marg <-- marginal_nodes(engine, S),
 	matlab_get_variable( marg.'T', Out2).
 

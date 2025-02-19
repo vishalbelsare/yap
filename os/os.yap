@@ -8,7 +8,7 @@
  *									 *
  *************************************************************************/
 
-
+/*
 :- system_module( '$os', [
 	       cd/0,
 	       cd/1,
@@ -21,6 +21,7 @@
 	       setenv/2
 	 ], [] ).
 :- use_system_module( '$_errors', [throw_error/2]).
+*/
 
 /**
 @defgroup YAPOS Access to Operating System Functionality
@@ -155,8 +156,10 @@ unix(argv(L)) :-
 	current_prolog_flag(argv, L).
 unix(cd) :- cd('~').
 unix(cd(A)) :- cd(A).
-unix(environ(X,Y)) :- '$do_environ'(X,Y).
-unix(getcwd(X)) :- getcwd(X).
+unix(environ(X,Y)) :- 
+	'$do_environ'(X,Y).
+unix(getcwd(X)) :- 
+	getcwd(X).
 unix(shell(V)) :- var(V), !,
 	throw_error(instantiation_error,unix(shell(V))).
 unix(shell(A)) :- atom(A), !, '$shell'(A).
@@ -218,7 +221,7 @@ getenv(Na,Val) :-
 
 Set environment variable.   _Name_ and  _Value_ should be
 instantiated to atoms or integers.  The environment variable will be
-passed to `shell/[0-2]` and can be requested using `getenv/2`.
+passed to `shell/[0-2]` and can be requested using getenv/2.
 They also influence expand_file_name/2.
 
 

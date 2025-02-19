@@ -13,7 +13,7 @@
     @file swi.h
 
     @defgroup swi-c-interface SWI-Prolog Foreign Language Interface
-    @ingroup ForeignLanguageInterface
+    @ingroup YAPAPI
     @brief YAP reimplementation of the SWI C API.
     @{
 

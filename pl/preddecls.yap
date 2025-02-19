@@ -1,4 +1,4 @@
-/*************************************************************************
+/*************************************************************************ttttttttttttttttttttttttttt
 *									 *
 *	 YAP Prolog 							 *
 *									 *
@@ -14,7 +14,7 @@
 * comments:	Predicate Manipulation for YAP: declaration support	 *
 *									 *
 *************************************************************************/
-:- system_module( '$_preddecls', [(discontiguous)/1,
+:- system_module_( '$_preddecls', [(discontiguous)/1,
         (dynamic)/1,
         (multifile)/1,
         (discontiguous)/1], ['$check_multifile_pred'/3,
@@ -63,7 +63,7 @@ defines all new or redefined predicates to be public.
 	functor(T,A,N),
 	'$do_make_public'(T, Mod).
 '$public'(X, Mod) :-
-	throw_error(type_error(callable,X),dynamic(Mod:X)).
+    throw_error(type_error(predicate_indicator,X),dynamic(Mod:X)).
 
 '$do_make_public'(T, Mod) :-
 	'$is_dynamic'(T, Mod), !.  % all dynamic predicates are public.

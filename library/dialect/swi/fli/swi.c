@@ -109,10 +109,11 @@ static void UserCPredicate(char *a, CPredicate def, arity_t arity,
   CurrentModule = cm;
 }
 
-//!  @{
+//!  @}
 
 /** @defgroup swi-ATOMS Atom Construction
  *  @ingroup swi-c-interface
+ *  @{
  *  */
 
 static UInt cvtFlags(unsigned flags) {
@@ -313,11 +314,12 @@ int PL_chars_to_term(const char *s, term_t t)
 }
 //!  @}
 
-/** @{
+/**
  *
  * @defgroup swi-term_references Term References
  *  @ingroup swi-c-interface
- *  */
+ *  @{
+*/
 
 /** @brief create a clean term reference
  *
@@ -338,7 +340,7 @@ X_API term_t PL_copy_term_ref(term_t from) {
 
 /** @brief create several new term references
  *
- * @par n is the number of references
+ * n is the number of references
  */
 X_API term_t PL_new_term_refs(int n) {
   CACHE_REGS
@@ -357,15 +359,9 @@ X_API void PL_reset_term_refs(term_t after) {
 /** @}
  */
 
-//!  @{
-
-/**  @defgroup swi-term_manipulation Term Manipulation
+/**  @defgroup swi-get-operations Reading Terms
  *  @ingroup swi-c-interface
- *  */
-
-/**
- *  @defgroup swi-get-operations Reading Terms
- *  @ingroup swi-term_manipulation
+ * @{
  *  */
 
 /** @brief *name is assigned the name and *arity the arity if term ts, or the
@@ -633,9 +629,9 @@ X_API int PL_get_atom_chars(term_t ts, char **a) /* SAM check type */
   }
   return 1;
 }
-                                                                                                                                                                                                                                                                                                                                                    /** @brief *a is assigned the string representation of the atom in term  ts, and
-                                                                                                                                                                                                                                                                                                                                                     * *len its size, or the operation fails
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             *
+                                                                                                                                                                                                                                                                                                            /**   * @brief *a is assigned the string
+																																						   representation of the atom in term  ts, and
+ * *len its size, or the operation fails *
  */
 X_API int PL_get_atom_nchars(term_t ts, size_t *len,
                              char **s) /* SAM check type */
@@ -788,12 +784,12 @@ X_API int PL_get_head(term_t ts, term_t h) {
  *  @}
  *  */
 
-//!  @{
 /**
 *  @defgroup swi-unify-operations Unifying Terms
-*  @ingroup swi-term_manipulation
-
-*  */
+*  @ingroup  swi-c-interface
+*  @{
+*
+*/
 
 /*b* @brief t unifies with the true/false value in a.
  *
@@ -2184,8 +2180,7 @@ X_API term_t PL_exception(qid_t q) {
 }
 
 X_API void PL_clear_exception(void) {
-  CACHE_REGS
-  Yap_ResetException(worker_id);
+  Yap_ResetException(NULL);
 }
 
 X_API int PL_initialise(int myargc, char **myargv) {
@@ -2501,7 +2496,7 @@ X_API void PL_close_query(qid_t q) {
 
     struct open_query_struct *qi = (struct open_query_struct *)q;
   if (Yap_HasException(PASS_REGS1) && !(qi->q_flags & (PL_Q_CATCH_EXCEPTION))) {
-    Yap_ResetException(worker_id);
+    Yap_ResetException(NULL);
   }
   /* need to implement backtracking here */
   if (qi->q_open != 1 || qi->q_state == 0) {
@@ -3170,6 +3165,5 @@ char *PL_cwd(char *cwd, arity_t cwdlen) {
 }
 
 /**
- * @}
  * @}
  */

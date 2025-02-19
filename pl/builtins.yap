@@ -19,15 +19,17 @@
   @file boot.yap
   @brief YAP bootstrap
 
-  @defgroup YAPControl Control Predicates
-  @ingroup Builtins
+ */
 
+/**
+  @addtogroup YAPControl Control Predicates
 @{
 
 */
 
 /** @pred  0:P,0:Q   is iso, meta
-Conjunction of goals (and).
+
+The comma represents the Conjunction of goals (and).
 
 The conjunction is a fundamental construct of Prolog. Example:
 
@@ -40,15 +42,41 @@ should be read as `p( _X_) if q( _X_) and r( _X_).
 
 */
 ','(X,Y) :-
-    '$execute0'((X,Y)).
+    call((X,Y)).
     
-comma(P0,G0,P1,G1) :-
-    '$execute_within'(P0,G0),
-    '$last_execute_within'(P1,G1).
+comma(X,Y) :-
+    call(X),
+    call(Y).
 
+comma(X,Y,Z) :-
+    call(X),
+    call(Y),
+    call(Z).
+    
+comma(X,Y,Z,A) :-
+    call(X),
+    call(Y),
+    call(Z),
+    call(A).
+     
+comma(X,Y,Z,A,B) :-
+    call(X),
+    call(Y),
+    call(Z),
+    call(A),
+    call(B).
+    
+comma(X,Y,Z,A,B,C) :-
+    call(X),
+    call(Y),
+    call(Z),
+    call(A),
+    call(B),
+    call(C).
 
-    /** @pred   0:P ; 0:Q  is iso
-Disjuncjtion of goals (or).
+    /** @pred   ';'( 0:P , 0:Q)  is iso
+
+@brief Disjunction of goals (or).
 
 Example:
 
@@ -59,15 +87,33 @@ should be read as "p( _X_) if q( _X_) or r( _X_)".
 
 
 */
-';'(G,Y) :-
-    '$execute0'((G;Y)).
-
-semic(P0,G0,P1,G1) :-
+';'(X,Y) :-
+    current_choice_point(CP),
+    current_source_module(M),
     (
-	'$last_execute_within'(P0,G0)
-    ;   
-    '$last_execute_within'(P1,G1)
-    ).
+	X=(A->B)
+	      ->
+	      (
+		  call(A)
+	      ->
+	      '$call'(B,CP,(X;Y),M)
+    ;
+    '$call'(Y,CP,(X;Y),M)
+	      )
+    ; 	X=(A*->B)
+	      ->
+	      (
+		  call(A)
+	      *->
+	      '$call'(B,CP,(X;Y),M) ;
+		  '$call'(Y,CP,(X; Y),M)
+		  )
+    ;
+    '$call'(X,CP,(X; Y),M)
+    ;
+    '$call'(Y,CP,(X; Y),M)
+	      ).
+
 
 
 
@@ -124,35 +170,11 @@ arguments.
 */
 '->'(X,Y) :-
     (
-	'$execute0'(X)
+	'$execute'(X)
     ->
-    '$execute0'(Y)
+    '$execute'(Y)
     ).
 
-
-
-/** @pred    0:Condition *-> 0:Action  is iso
-
-This construct implements the so-called <em>soft-cut</em>. The control is
-defined as follows:
-  + If  _Condition_ succeeds at least once, the
-semantics is the same as ( _Condition_,  _Action_).
-
-  + If
- _Condition_ does not succeed, the semantics is that of (\\+
- _Condition_,  _Else_).
-
- In other words, if  _Condition_
-succeeds at least once, simply behave as the conjunction of
- _Condition_ and  _Action_, otherwise execute  _Else_.
-
-The construct  _A *-> B_, i.e. without an  _Else_ branch, is
-translated as the normal conjunction  _A_,  _B_.
-
-
-*/
-'*->'(X,Y) :-
-	(X, Y).
 
 
 /** @pred  ! is iso
@@ -219,14 +241,17 @@ If _P_ includes cuts, the cuts are defined to be scoped by _P_: they cannot cut 
  ~~~~~~~~~~~~
 
 */
-\+(G) :-     \+ '$execute0'(G).
+\+(G) :-     \+ '$execute'(G).
 
-not(G) :-    \+ '$execute0'(G).
-
-
+not(G) :-    \+ '$execute'(G).
 
 
-/** @pred  repeat is iso
+
+
+/**
+
+@pred repeat is iso
+
 Succeeds repeatedly.
 
 In the next example, `repeat` is used as an efficient way to implement
@@ -320,10 +345,10 @@ once/1.
 */
 once(!) :- !.
 once(G) :-
-	'$execute0'(G), !.
+	'$execute'(G), !.
 
 
-(:- G) :- '$execute0'(G), !.
+(:- G) :- '$execute'(G), !.
 
 (?- G) :- '$execute'(G).
 
@@ -331,4 +356,6 @@ once(G) :-
 
 ([]).
 
+
+%% @}
 

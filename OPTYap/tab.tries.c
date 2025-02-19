@@ -331,7 +331,7 @@ static inline CELL *exec_substitution_loop(gt_node_ptr current_node,
 #endif /* GLOBAL_TRIE_FOR_SUBTERMS */
       {
         int var_index = VarIndexOfTableTerm(t);
-        int vars_arity = *stack_vars;
+        CELL vars_arity = *stack_vars;
         t = MkVarTerm();
         if (var_index >= vars_arity) {
           while (vars_arity < var_index) {
@@ -429,7 +429,7 @@ static inline CELL *exec_substitution_loop(gt_node_ptr current_node,
         current_node = TrNode_parent(current_node);
         t = MkLongIntTerm(li);
       } else {
-        int f_arity = ArityOfFunctor(f);
+        arity_t f_arity = ArityOfFunctor(f);
         t = Yap_MkApplTerm(f, f_arity, stack_terms);
         stack_terms += f_arity;
       }
@@ -1255,7 +1255,7 @@ sg_fr_ptr subgoal_search(yamop *preg, CELL **Yaddr) {
 
 ans_node_ptr answer_search(sg_fr_ptr sg_fr, CELL *subs_ptr) {
 #define subs_arity *subs_ptr
-  CACHE_REGS
+                            CACHE_REGS
   CELL *stack_vars;
   int i, vars_arity;
   ans_node_ptr current_ans_node;
@@ -1441,10 +1441,10 @@ CELL *exec_substitution(gt_node_ptr current_node, CELL *aux_stack) {
 #undef subs_arity
 }
 
-void update_answer_trie(sg_fr_ptr sg_fr) {
+void update_answer_trie(sg_fr_ptr sg_fr USES_REGS) {
   ans_node_ptr current_node;
 
-  free_answer_hash_chain(SgFr_hash_chain(sg_fr));
+  free_answer_hash_chain(SgFr_hash_chain(sg_fr) PASS_REGS);
   SgFr_hash_chain(sg_fr) = NULL;
   SgFr_state(sg_fr) +=
       2; /* complete --> compiled : complete_in_use --> compiled_in_use */
@@ -1541,7 +1541,7 @@ void free_subgoal_trie(sg_node_ptr current_node, int mode, int position) {
     sg_fr_ptr sg_fr = get_subgoal_frame_for_abolish(current_node PASS_REGS);
     if (sg_fr) {
       ans_node_ptr ans_node;
-      free_answer_hash_chain(SgFr_hash_chain(sg_fr));
+      free_answer_hash_chain(SgFr_hash_chain(sg_fr) PASS_REGS);
       ans_node = SgFr_answer_trie(sg_fr);
       if (TrNode_child(ans_node))
         free_answer_trie(TrNode_child(ans_node), TRAVERSE_MODE_NORMAL,
@@ -1659,10 +1659,9 @@ void free_answer_trie(ans_node_ptr current_node, int mode, int position) {
   return;
 }
 
-void free_answer_hash_chain(ans_hash_ptr hash) {
+void free_answer_hash_chain(ans_hash_ptr hash USES_REGS) {
 #if defined(THREADS_NO_SHARING) || defined(THREADS_SUBGOAL_SHARING)
-  CACHE_REGS
-#endif /* THREADS_NO_SHARING || THREADS_SUBGOAL_SHARING */
+  #endif /* THREADS_NO_SHARING || THREADS_SUBGOAL_SHARING */
 
   while (hash) {
     ans_node_ptr chain_node, *bucket, *last_bucket;

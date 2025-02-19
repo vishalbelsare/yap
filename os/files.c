@@ -26,6 +26,8 @@ static char SccsId[] = "%W% %G%";
 /**
  * @addtogroup FilesM
  *
+ * Access the filesystem.
+ *
  * @{
  *
  */
@@ -207,7 +209,6 @@ static Int file_size(USES_REGS1) {
   if ((vfs = vfs_owner(s))) {
     vfs_stat st;
     vfs->stat(vfs, s, &st);
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
     return Yap_unify_constant(ARG2, MkIntegerTerm(st.st_size));
   }
   if (GLOBAL_Stream[sno].status & Seekable_Stream_f &&
@@ -216,7 +217,6 @@ static Int file_size(USES_REGS1) {
     // there
     struct stat file_stat;
     if ((rc = fstat(fileno(GLOBAL_Stream[sno].file), &file_stat)) < 0) {
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
       if (rc == ENOENT)
         PlIOError(EXISTENCE_ERROR_SOURCE_SINK, ARG1, "%s in file_size",
                   strerror(errno));
@@ -226,10 +226,8 @@ static Int file_size(USES_REGS1) {
       return false;
     }
     // and back again
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
     return Yap_unify_constant(ARG2, MkIntegerTerm(file_stat.st_size));
   }
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return false;
 }
 
@@ -258,7 +256,7 @@ static Int access_file(USES_REGS1) {
   Term tmode = Deref(ARG2);
   char *ares;
   Atom atmode;
-
+  //ap_DebugPlWriteln(tname);
   if (IsVarTerm(tmode)) {
     Yap_Error(INSTANTIATION_ERROR, tmode, "access_file/2");
     return FALSE;
@@ -402,93 +400,6 @@ static Int exists_directory(USES_REGS1) {
 #endif
 }
 
-static Int is_absolute_file_name(USES_REGS1) { /* file_base_name(Stream,N) */
-  Term t = Deref(ARG1);
-  Atom at;
-  bool rc;
-  if (IsVarTerm(t)) {
-    Yap_Error(INSTANTIATION_ERROR, t, "file_base_name/2");
-    return false;
-  }
-  int l = push_text_stack();
-  const char *buf = Yap_TextTermToText(t PASS_REGS);
-  if (buf) {
-    rc = Yap_IsAbsolutePath(buf, true);
-  } else {
-    at = AtomOfTerm(t);
-#if _WIN32
-    rc = PathIsRelative(RepAtom(at)->StrOfAE);
-#else
-    rc = RepAtom(at)->StrOfAE[0] == '/';
-#endif
-  }
-  pop_text_stack(l);
-  return rc;
-}
-
-static Int file_base_name(USES_REGS1) { /* file_base_name(Stream,N) */
-  Term t = Deref(ARG1);
-  Atom at;
-  if (IsVarTerm(t)) {
-    Yap_Error(INSTANTIATION_ERROR, t, "file_base_name/2");
-    return FALSE;
-  }
-  at = AtomOfTerm(t);
-  const char *c = RepAtom(at)->StrOfAE;
-  const char *s;
-#if HAVE_BASENAME && 0 // DISABLED: Linux basename is not compatible with
-                       // file_base_name in SWI and GNU
-  char c1[MAX_PATH + 1];
-  strncpy(c1, c, MAX_PATH);
-  s = basename(c1);
-#else
-  Int i = strlen(c);
-  while (i && !Yap_dir_separator((int)c[--i]))
-    ;
-  if (Yap_dir_separator((int)c[i])) {
-    i++;
-  }
-  s = c + i;
-#endif
-  return Yap_unify(ARG2, MkAtomTerm(Yap_LookupAtom(s)));
-}
-
-static Int file_directory_name(USES_REGS1) { /* file_directory_name(Stream,N) */
-  Term t = Deref(ARG1);
-  Atom at;
-  if (IsVarTerm(t)) {
-    Yap_Error(INSTANTIATION_ERROR, t, "file_directory_name/2");
-    return false;
-  }
-  at = AtomOfTerm(t);
-  const char *c = RepAtom(at)->StrOfAE;
-#if HAVE_BASENAME && 0 // DISABLED: Linux basename is not compatible with
-                       // file_base_name in SWI and GNU
-  const char *s;
-  char c1[MAX_PATH + 1];
-  strncpy(c1, c, MAX_PATH);
-  s = dirname(c1);
-#else
-  char s[MAX_PATH + 1];
-  ssize_t i=0;
-  if (c && c[0]) {
-    i = strlen(c);
-      strncpy(s, c, MAX_PATH);
-      while (--i) {
-	if (Yap_dir_separator((int)c[i]))
-	  break;
-      }
-  }  else {
-    if (i == 0) {
-      s[0] = '.';
-      i = 1;
-    }
-  }
-  s[i] = '\0';
-#endif
-  return Yap_unify(ARG2, MkAtomTerm(Yap_LookupAtom(s)));
-}
-
 /** @pred make_directory(+ _Dir_)
 
 Create a directory  _Yap_Dir_. If the parent directory does not exist, silently
@@ -501,11 +412,14 @@ static Int make_directory(USES_REGS1) {
   Term t = Deref(ARG1);
   const char *fd0;
   
-  if (IsAtomTerm(t))
-  fd0 = RepAtom(AtomOfTerm(t))->StrOfAE;
-  else if (IsStringTerm(t))
+  if (IsAtomTerm(t)) {
+    fd0 = RepAtom(AtomOfTerm(t))->StrOfAE;
+  } else if (IsStringTerm(t)) {
       fd0 = StringOfTerm(t);
-      
+  } else {
+    Yap_ThrowError(TYPE_ERROR_ATOM, t, "make_directory/2");
+    return false;
+  }
    fd0 =   Yap_AbsoluteFile(fd0, true);
   struct cwk_segment segment;
   if (!cwk_path_get_first_segment(fd0, &segment)) {
@@ -549,9 +463,22 @@ cwk_path_get_root(fd0, &sz);
   return true;
 }
 
-/** @pred list_directory(+ _Dir_, -ListOfFiles)
 
- Return the list of files for a directory
+
+
+
+/** @pred directory_files(+ _Dir_,- _List_)
+
+Given a directory  _Dir_,  directory_files/2 procedures a
+listing of all fniles and directories in the directory:
+
+```
+    ?- directory_files('.',L), writeq(L).
+['Makefile.~1~','sys.so','Makefile','sys.o',x,..,'.']
+```
+The predicates uses the `dirent` family of routines in Unix
+environments, and `findfirst` in WIN32 through the system_library buil
+
  */
 static Int list_directory(USES_REGS1) {
   Term tf = TermNil;
@@ -650,7 +577,6 @@ static Int access_path(USES_REGS1) {
     if ((vfs = vfs_owner(s))) {
       vfs_stat st;
       bool rc = vfs->stat(vfs, s, &st);
-      //UNLOCK(GLOBAL_Stream[sno].streamlock);
       return rc;
     }
 #if HAVE_STAT
@@ -753,7 +679,6 @@ static Int exists_file(USES_REGS1) {
     if ((vfs = vfs_owner(s))) {
       vfs_stat st;
       bool rc = vfs->stat(vfs, s, &st);
-      //UNLOCK(GLOBAL_Stream[sno].streamlock);
       return rc;
     }
 #if HAVE_STAT
@@ -813,10 +738,6 @@ static Int delete_file(USES_REGS1) {
  }
 
 void Yap_InitFiles(void) {
-  Yap_InitCPred("file_base_name", 2, file_base_name, SafePredFlag);
-  Yap_InitCPred("file_directory_name", 2, file_directory_name, SafePredFlag);
-  Yap_InitCPred("is_absolute_file_name", 1, is_absolute_file_name,
-                SafePredFlag);
   Yap_InitCPred("same_file", 2, same_file, SafePredFlag | SyncPredFlag);
   Yap_InitCPred("$access_file", 2, access_file, SafePredFlag | SyncPredFlag);
   Yap_InitCPred("$lines_in_file", 2, lines_in_file,

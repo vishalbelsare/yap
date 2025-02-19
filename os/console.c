@@ -24,12 +24,14 @@
  *
  *
  */
-/*
- * This file includes the interface to the console IO, tty style. Refer also to
- the readline library.
+/**
  * @defgroup console Support for console-based interaction.
  * @ingroup InputOutput
 
+ * This file includes the interface to the console IO, tty style. Refer also
+ * to
+ * the readline library.
+ @{
  */
 
 #include "sysbits.h"
@@ -37,17 +39,14 @@
 static Int prompt(USES_REGS1);
 static Int prompt1(USES_REGS1);
 
-static int ConsoleGetc(int);
-static int ConsolePutc(int, int);
-
 
 
 bool Yap_DoPrompt(StreamDesc *s) {
   CACHE_REGS
   if (LOCAL_newline) {
-    return false;
+    return true;
   }
-  return true;
+  return false;
 }
 
 
@@ -56,22 +55,7 @@ int console_post_process_read_char(int ch, StreamDesc *s) {
   CACHE_REGS
   /* the character is also going to be output by the console handler */
   console_count_output_char(ch, GLOBAL_Stream + LOCAL_c_error_stream);
-  if (ch == '\r') {
-    s->linestart = s->charcount;
-    LOCAL_newline = true;
-} else
- if (ch == '\n') {
-    CACHE_REGS
-    ++s->linecount;
-    ++s->charcount;
-    s->linestart = s->charcount;
-    LOCAL_newline = true;
- } else if (ch != EOF) {
-    CACHE_REGS
-    ++s->charcount;
-    LOCAL_newline = false;
-  }
-  return ch;
+  return post_process_read_char( ch, s);
 }
 
 bool is_same_tty(FILE *f1, FILE *f2) {
@@ -90,8 +74,6 @@ static Int is_same_tty2(USES_REGS1) { /* 'prompt(Atom)                 */
   bool out = (GLOBAL_Stream[sni].status & Tty_Stream_f) &&
              (GLOBAL_Stream[sno].status & Tty_Stream_f) &&
              is_same_tty(GLOBAL_Stream[sno].file, GLOBAL_Stream[sni].file);
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
-  UNLOCK(GLOBAL_Stream[sni].streamlock);
   return out;
 }
 
@@ -109,7 +91,7 @@ void Yap_ConsoleOps(StreamDesc *s) {
 }
 
 /* static */
-static int ConsolePutc(int sno, int ch) {
+ int ConsolePutc(int sno, int ch) {
   CACHE_REGS
   StreamDesc *s = &GLOBAL_Stream[sno];
   if (ch == 10) {
@@ -130,12 +112,12 @@ static int ConsolePutc(int sno, int ch) {
 
 /* send a prompt, and use the system for internal buffering. Speed is
    not of the essence here !!! */
-static int ConsoleGetc(int sno) {
+int ConsoleGetc(int sno) {
   CACHE_REGS
   register StreamDesc *s = &GLOBAL_Stream[sno];
   int ch;
 
-  /* keep the prompt around, just in case, but don't actually
+  /*§ keep the prompt around, just in case, but don't actually
      show it in silent mode */
   if (Yap_DoPrompt(s)) {
     if (!silentMode()) {
@@ -176,8 +158,6 @@ static int ConsoleGetc(int sno) {
     LOCAL_PrologMode |= ConsoleGetcMode;
 #endif
     LOCAL_PrologMode &= ~ InterruptMode;
-      if (ch == EOF)
-      return console_post_process_eof(s);
     return console_post_process_read_char(ch, s);
 }
 
@@ -234,10 +214,13 @@ Make sure we have a prompt at this point, even if we have to
 introduce a new line.
 
 */
-static Int ensure_prompting(USES_REGS1) { /* prompt(Old,New)       */
-  if (!LOCAL_newline) {
-    GLOBAL_Stream[2].stream_wputc(2, 10); // hack!
-  }
+static Int ensure_prompting(USES_REGS1) /* prompt(Old,New)       */
+  {
+    if(GLOBAL_Stream[2].status &  Past_Eof_Stream_f) {
+    return false;
+   } else if (!LOCAL_newline) {
+      GLOBAL_Stream[2].stream_wputc(2, 10); // hack!
+    }
   return true;
 }
 
@@ -253,3 +236,5 @@ void Yap_InitConsole(void) {
   Yap_InitCPred("$ensure_prompting", 0, ensure_prompting,
                 SafePredFlag | SyncPredFlag);
 }
+
+/// @}

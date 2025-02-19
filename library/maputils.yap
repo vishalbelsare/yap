@@ -13,8 +13,7 @@
 %%%%%%%%%%%%%%%%%%%%
 
 :- module(maputils,
-	  [compile_aux/2,
-	   pred_name/4,
+	  [pred_name/4,
 	   aux_preds/5,
 	   append_args/3]).
 
@@ -28,32 +27,14 @@
   *@{
 */
 
+
+
+
 :- dynamic number_of_expansions/1.
 
 number_of_expansions(0).
 
-%
-% compile auxiliary routines for term expansion
-%
-compile_aux([Clause|Clauses], Module) :-
-	% compile the predicate declaration if needed
-	( Clause = (Head :- _)
-	; Clause = Head ),
-	!,
-	functor(Head, F, N),
-	( current_predicate(Module:F/N)
-	->
-	    true
-	;
-%	    format("*** Creating auxiliary predicate ~q~n", [F/N]),
-%	    checklist(portray_clause, [Clause|Clauses]),
-	    compile_term([Clause|Clauses], Module)
-	).
 
-compile_term([], _).
-compile_term([Clause|Clauses], Module) :-
-	assert_static(Module:Clause),
-	compile_term(Clauses, Module).
 
 append_args(Term, Args, NewTerm) :-
 	Term =.. [Meta|OldArgs],
@@ -63,7 +44,7 @@ append_args(Term, Args, NewTerm) :-
 aux_preds(Meta, _, _, _, _) :-
 	var(Meta), !,
 	fail.
-aux_preds(_:Meta, MetaVars, Pred, PredVars, Proto) :- !,
+aux_preds(M:Meta, MetaVars, M:Pred, PredVars, M:Proto) :- !,
 	aux_preds(Meta, MetaVars, Pred, PredVars, Proto).
 aux_preds(Meta, MetaVars, Pred, PredVars, Proto) :-
 	Meta =.. [F|Args],

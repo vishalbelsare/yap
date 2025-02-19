@@ -14,7 +14,7 @@
 * comments:	sorting in Prolog					 *
 *									 *
 *************************************************************************/
-:- system_module( '$_sort', [keysort/2,
+:- system_module_( '$_sort', [keysort/2,
         length/2,
         msort/2,
         predmerge/4,
@@ -26,7 +26,14 @@
 
 :- use_system_module( '$_errors', [throw_error/2]).
 
-/** @addtogroup Comparing_Terms
+/**
+
+@defgroup Sorting Sorting Lists
+@ingroup Builtins
+
+@brief YAP provides a C-based implementation of heap-sort for nlogn sorting
+of lists.
+@{
 */
 
 
@@ -46,10 +53,10 @@ identical (in the sense of `==`) elements.
 
 */
 sort(L,O) :-
-	'$skip_list'(NL,L,RL),
+	skip_list(NL,L,RL),
 	( RL == [] -> true ;
-	  var(RL) -> throw_error(instantiation_error,sort(L,O)) ;
-	 throw_error(type_error(list,L),sort(L,O))
+	  var(RL) -> throw_error(error,error(instantiation_error,sort(L,O))) ;
+	 throw_error(error,error(type_error(list,L),sort(L,O)))
 	),
 	(
          nonvar(O)
@@ -59,18 +66,16 @@ sort(L,O) :-
          ->
            L == []
 	 ;
-	   '$skip_list'(NO,O,RO),
+	   skip_list(NO,O,RO),
 	   ( RO == [] -> NO =< NL ;
 	     var(RO) -> NO =< NL ;
-	     throw_error(type_error(list,O),sort(L,O))
+	     throw_error(error,error(type_error(list,O),sort(L,O)))
 	   )
          )
         ; true
 	),
 	'$sort'(L,O).
 
-msort(L,O) :-
-	'$msort'(L,O).
 
 /** @pred  keysort(+ _L_, _S_) is iso
 
@@ -92,18 +97,18 @@ S = [1-b,1-a,1-b,2-c,3-a]
 
 */
 keysort(L,O) :-
-	'$skip_list'(NL,L,RL),
+	skip_list(NL,L,RL),
 	( RL == [] -> true ;
-	  var(RL) -> throw_error(instantiation_error,sort(L,O)) ;
-	  throw_error(type_error(list,L),sort(L,O))
+	  var(RL) -> throw_error(error,error(instantiation_error,keysort(L,O))) ;
+	  throw_error(error,error(type_error(list,L),sort(L,O)))
 	),
 	(
 	 nonvar(O)
 	->
-	 '$skip_list'(NO,O,RO),
+	 skip_list(NO,O,RO),
    	 ( RO == [] -> NO =:= NL ;
 	   var(RO) -> NO =< NL ;
-	   throw_error(type_error(list,O),sort(L,O))
+	   throw_error(error,error(type_error(list,O),sort(L,O)))
 	 )
 	; true
 	),

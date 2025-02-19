@@ -1,4 +1,4 @@
- /*************************************************************************
+< /*************************************************************************
  *									 *
  *	 YAP Prolog 							 *
  *									 *
@@ -13,7 +13,7 @@
  *
  */
 
-:- system_module( '$_atoms', [
+:- system_module_( '$_atoms', [
 			      atom_concat/2,
 			      string_concat/2,
         atomic_list_concat/2,
@@ -22,6 +22,19 @@
 
 :- use_system_module( '$_errors', [throw_error/2]).
 
+
+sub_atom(T,B,L,A,S) :-
+    deterministic_sub_atom(T,B,L,A,S, ND),
+    ( var(ND)-> true ; sub_text(T,B,L,A,S,ND)).
+    
+sub_string(T,B,L,A,S) :-
+    deterministic_sub_string(T,B,L,A,S, ND),
+    ( var(ND)-> true ; sub_text(T,B,L,A,S,ND)).
+    
+sub_text(T,B,L,A,S) :-
+    deterministic_sub_text(T,B,L,A,S, ND),
+    (var(ND) -> true ; sub_text(T,B,L,A,S,ND)).
+    
 
 /**
  * @addtogroup Predicates_on_Text
@@ -214,7 +227,46 @@ string_concat(Xs,At) :-
 	sub_string(At1, Next, Sz, _Left, At0),
 	Follow is Next+Sz,
 	 '$process_string_holes'(Unbound).
+/**
+ * @pred string_char( ?_I_, +_S_+, ?-_C_)
+ *
+ * Given string _S_, _C_                                                    * represents the character at position _I_. Arguments are enumerated  so that position 1 corresponds to the first character in string _S_.
+ *
+ *
+ * The string _S_ must be known when the predicate is called. _I_ and _C_ may be unbound. If they are, YAP will enumerate all characters from the string.                                                                        
+ *
+*/
+string_char(I,S,C) :-
+    must_be_string(S),
+    (var(I) ->
+     string_length(S,L),
+     between(1,L,I)
+     ;
+     true
+    ),
+    '$get_string_char'(I,S,C).
+
+/**
+ * @pred string_code( ?_I_, +_S_+, ?-_C_)
+ *
+ * Given string _S_, _C_                                                    * represents the character at position _I_. Arguments are enumerated  so that position 1 corresponds to the first character in string _S_.
+ *
+ *
+ * The string _S_ must be known when the predicate is called. _I_ and _C_ may be unbound. If they are, YAP will enumerate all characters from the string.                                                                        
+ *
+*/
+string_code(I,S,C) :-
+    must_be_string(S),
+    (var(I) ->
+     string_length(S,L),
+     between(1,L,I)
+     ;
+     true
+    ),
+    '$get_string_code'(I,S,C).
+
 
 /**
 @}
 */
+

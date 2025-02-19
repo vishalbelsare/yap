@@ -17,7 +17,7 @@
 
 %%! @addtogroup OS
 %%  @{
-:- system_module( '$_signals', [alarm/3,
+:- system_module_( '$_signals', [alarm/3,
 				on_exception/3,
 				on_signal/3,
 				raise_exception/1,
@@ -27,7 +27,6 @@
 
 :- use_system_module( '$_debug', ['$trace'/1]).
 
-:- use_system_module( '$_threads', ['$thread_gfetch'/1]).
 
 /** @pred  alarm(+ _Seconds_,+ _Callable_,+ _OldAlarm_)
 
@@ -146,13 +145,7 @@
 
 :- dynamic prolog:'$signal_handler'/1.
 
-'$creep'(Goal) :-
-    '$signal_handler'(sig_creep),
-    call(Goal).
-
-'$signal_handler'(sig_creep) :-
-    '$disable_debugging'.
-
+'$signal_handler'(sig_creep).
 '$signal_handler'(sig_int) :-
     flush_output,
     '$clear_input'(user_input),
@@ -163,7 +156,7 @@
 	'$thread_gfetch'(Goal),
 	% if more signals alive, set creep flag
 	'$current_module'(M0),
-	'$execute0'(M0:Goal).
+	('$execute_rlist'(Goal,M0),fail ; true).
 '$signal_handler'(sig_trace) :-
 	trace.
 '$signal_handler'(sig_debug) :-
@@ -188,12 +181,43 @@
     throw(error(signal(pipe,[]),true)).
 '$signal_handler'(sig_fpe) :-
     throw(error(signal(fpe,[]),true)).
+'$signal_handler'(abort) :-
+    abort.
 
 int_action(s) :-
     statistics.
+int_action(a) :-
+    abort.
+int_action(b) :-
+    break.
+int_action(e) :-
+    halt.
+int_action(d) :-
+    debug.
+int_action(g) :-
+    yap_hacks:stack_dump.
 int_action(t) :-
     trace,
     '$creep'.
+int_action('T') :-
+    start_low_level_trace.
+int_action(h) :-
+    format(user_error, "Please press one of:~n"),
+    format(user_error, "    a for abort~n",[]),
+    format(user_error, "    b for break~n",[]),
+    format(user_error, "    c for continue~n",[]),
+    format(user_error, "    d for enabling debug mode~n",[]),
+    format(user_error, "    e for exit (halt)~n", []),
+    format(user_error, "    g for a stack dump~n",[]),
+    format(user_error, "    s for statistics~n",[]),
+    format(user_error, "    t for trace\n").
+
+'$execute_rlist'([_|L],M) :-
+    '$execute_rlist'(L,M).
+'$execute_rlist'([G|_],M) :-
+    once(M:G),
+    fail.
+
 
 
 '$start_creep'(Mod:G) :-
@@ -205,7 +229,7 @@ int_action(t) :-
 	'$execute_clause'(G,Mod,Ref,CP).
 '$no_creep_call'('$execute0'(M:G),_) :- !,
 	'$enable_debugging',
-	'$execute_nonstop'(G,M).
+	'$execute_non_stop'(M:G).
 '$no_creep_call'(G, M) :-
 	'$enable_debugging',
 	'$execute0'(M:G).
@@ -288,10 +312,6 @@ read_sig.
 :- '$set_no_trace'('$execute_clause'(_,_,_,_), prolog).
 :- '$set_no_trace'('$restore_regs'(_,_), prolog).
 :- '$set_no_trace'('$undefp'(_), prolog).
-:- '$set_no_trace'('$Error'(_), prolog).
-:- '$set_no_trace'('$LoopError'(_,_), prolog).
-%:- '$set_no_trace'('$TraceError'(_,_,_), prolog).
-%:- '$set_no_trace'('$handle_error'(_,_,_), prolog).
 
 
 %%! @}

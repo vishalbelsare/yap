@@ -15,7 +15,9 @@
 *									 *
 *************************************************************************/
 
-/** @defgroup Undefined_Procedures Handling Undefined Procedures
+/**
+ *
+ * @defgroup Undefined_Procedures Handling Undefined Procedures
 @ingroup YAPControl
 @{
 
@@ -25,7 +27,7 @@ dynamic. What YAP does when trying to execute undefined predicates can
 be specified in three different ways:
 
 
-+ By setting an YAP flag, through the yap_flag/2 or
++ By setting an YAP flag, through the set_prolog_flag/2 or
 set_prolog_flag/2 built-ins. This solution generalizes the
 ISO standard by allowing module-specific behavior.
 + By using the unknown/2 built-in (this deprecated solution is
@@ -37,7 +39,7 @@ with SICStus Prolog.
 
 */
 
-/**  @pred  user:unknown_predicate_handler(+ _Call_, + _M_, - _N_)
+/**  @pred  unknown_predicate_handler(+ _Call_, + _M_, - _N_)
 
 In YAP, the default action on undefined predicates is to output an
 `error` message. Alternatives are to silently `fail`, or to print a
@@ -46,19 +48,16 @@ where the default action is `error`.
 
 The user:unknown_predicate_handler/3 hook was first introduced in
 SICStus Prolog. It allows redefining the answer for specifici
-calls. As an example. after defining `undefined/1` by:
+calls. As an example. if undefined/1 is:
 
 ```
 undefined(A) :-
 	     format('Undefined predicate: ~w~n',[A]), fail.
-```
-and executing the goal:
 
-```
 :- assert(user:unknown_predicate_handler(U,M,undefined(M:U)) )
-```
-a call to a predicate for which no clauses were defined will result in
-the output of a message of the form:
+
+call to a predicate for which no clauses were defined will result in
+the output of a message of Undefined predicate.
 
 ```
 Undefined predicate:
@@ -69,29 +68,25 @@ followed by the failure of that call.
 :- dynamic user:unknown_predicate_handler/3.
 
 '$undefp'(G0) :-
-    setup_call_cleanup(
-	'$undefp_handler'(0),
-	'$undefp__'(G0, NewG),
-	'$undefp_handler'('$undefp'(_))
-    ),
+    '$exit_undefp',
+    '$undefp__'(G0, NewG),
     call(NewG).
-			 
-
-
 
 '$undefp__'(MGoal, FMGoal) :-
-	'$imported_predicate'(MGoal,FMGoal),
-	!.
+    '$imported_predicate'(MGoal,FMGoal),
+    !.
 '$undefp__'(M:G, NewG) :-
+    '$number_of_clauses'(unknown_predicate_handler(_,_,_), user, N ),
+    N > 0,
     user:unknown_predicate_handler(G, M, NewG),
     !.
-'$undefp__'(M:G, _) :- '$undefp_flag'(M:G).
+'$undefp__'(M:G, _) :-
+    '$undefp_flag'(M:G).
 
 '$undefp_flag'(G) :-
-    prolog_flag(unknown, Flag),
-    '$undef_error'(Flag,  G),
+    current_prolog_flag(unknown, Flag),
+    '$undef_error'(Flag,G),
     fail.
-
 
 '$undef_error'(error,  ModGoal) :-
 	'$yap_strip_module'(ModGoal, M, G),
@@ -100,10 +95,10 @@ followed by the failure of that call.
 '$undef_error'(warning,  ModGoal) :-
     '$yap_strip_module'(ModGoal, M, G),
 	functor( G, N, A),
-	print_warning( error, error(existence_error(procedure,M:N/A),ModGoal) ).
-%% no need for code at this point.
-%%'$undef_error'(fail,_) :-
-%%	fail.
+	print_warning( error(existence_error(procedure,M:N/A),ModGoal) ).
+% no need for code at this point.
+%'$undef_error'(fail,_) :-
+%	fail.
 
 /** @pred  unknown(- _O_,+ _N_)
 
@@ -117,9 +112,11 @@ The unknown predicate, informs about what the user wants to be done
 */
 
 unknown(P, NP) :-
-    yap_flag( unknown, P, NP ).
+    current_prolog_flag( unknown, P ),
+    set_prolog_flag( unknown, NP ).
 
 /**
 @}
 */
+
 
