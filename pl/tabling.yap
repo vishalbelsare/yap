@@ -5,7 +5,7 @@
  */
 
 
-:- system_module( '$_tabling', [abolish_table/1,
+:- system_module_( '$_tabling', [abolish_table/1,
         global_trie_statistics/0,
         is_tabled/1,
         show_all_local_tables/0,
@@ -167,7 +167,7 @@ were found. Somewhat less efficient but creates less choice-points.
 
 The default tabling mode for a new tabled predicate is `batched`
 and `exec_answers`. To set the tabling mode for all predicates at
-once you can use the yap_flag/2 predicate as described next.
+once you can use the set_prolog_flag/2 predicate as described next.
  
 */
 :- meta_predicate 

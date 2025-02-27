@@ -12,14 +12,16 @@
  * version:      $Id: Yap.h,v 1.38 2008-06-18 10:02:27 vsc Exp $	 *
  *************************************************************************/
 
-
 ///
 /// @file YapError.h
 ///
-/// @newgroup ErrorC C API/Implementation of error handling
-/// @ingroup YapError
+/// @brief The file  YapErrors.h defines the internal error handling API.
 ///
-/// @The file  YapErrors.h defines the internal error handling API.
+/// @defgroup ErrorC C API/Implementation of error handling
+/// @ingroup YAPErrors
+///
+/// @{
+///
 
 #ifndef YAP_ERROR_H
 #define YAP_ERROR_H 1
@@ -29,6 +31,7 @@
 #define E0(A, B, C) A,
 #define E(A, B, C) A,
 #define E1(A, B, C) A,
+#define ES(A, B, C) A,
 #define E2(A, B, C, D) A,
 
 #define BEGIN_ERRORS() typedef enum {
@@ -72,10 +75,9 @@ Yap_Error__(false, __FILE__, __FUNCTION__, __LINE__, id, TermNil, __VA_ARGS__)
 #define Yap_ThrowError(id, inp, ...)					\
   Yap_ThrowError__(__FILE__, __FUNCTION__, __LINE__, id, inp, __VA_ARGS__)
 
-#define Yap_syntax_error(t,sno, inp, ...)					\
-  Yap_syntax_error__(__FILE__, __FUNCTION__, __LINE__,t,sno,LOCAL_tokptr, LOCAL_toktide, inp,  __VA_ARGS__)
 
-
+#define Yap_syntax_error(sno, tokptr, toktide, msg, ...)			\
+  Yap_syntax_error__(__FILE__, __FUNCTION__, __LINE__,sno,tokptr, toktide,msg, __VA_ARGS__ )
 
 
 
@@ -92,10 +94,10 @@ Yap_Error__(false, __FILE__, __FUNCTION__, __LINE__, id, TermNil, __VA_ARGS__)
   }
 
 //INLINE_ONLY 
- static Term Yap_ensure_atom__(const char *fu, const char *fi, int line,
-                                   Term in) {
-  Term t = Deref(in);
-  // Term Context = Deref(ARG2);
+ static YAP_Term Yap_ensure_atom__(const char *fu, const char *fi, int line,
+                                   YAP_Term in) {
+  YAP_Term t = Deref(in);
+  // YAP_Term Context = Deref(ARG2);
   if (!IsVarTerm(t) && IsAtomTerm(t))
     return t;
   if (IsVarTerm(t)) {
@@ -251,11 +253,12 @@ Yap_Error__(false, __FILE__, __FUNCTION__, __LINE__, id, TermNil, __VA_ARGS__)
     uintptr_t parserLastPos;
     uintptr_t parserLastLinePos;
     uintptr_t parserLine;
+    uintptr_t parserSize;
     uintptr_t parserLinePos;
     uintptr_t parserFirstLine;
     uintptr_t parserLastLine;
     const char *parserTextA;
-    size_t parserTextB;
+    const char * parserTextB;
     const char *parserFile;
     /// reading a clause, or called from read?
     bool parserReadingCode;
@@ -267,6 +270,9 @@ Yap_Error__(false, __FILE__, __FUNCTION__, __LINE__, id, TermNil, __VA_ARGS__)
     const char *prologStack;
      char *errorMsg;
     size_t errorMsgLen;
+    const char *currentGoal;
+    const char *alternativeGoal;
+    const char *continuationGoal;
     struct s_yap_error_descriptor *top_error;
   } yap_error_descriptor_t;
 
@@ -287,7 +293,7 @@ Yap_Error__(false, __FILE__, __FUNCTION__, __LINE__, id, TermNil, __VA_ARGS__)
   extern YAP_Term Yap_MkFullError(yap_error_descriptor_t * r, yap_error_number e);
   extern bool Yap_MkErrorRecord(
       yap_error_descriptor_t * r, const char *file, const char *function,
-      int lineno, yap_error_number type, YAP_Term where, const char *msg);
+      int lineno, yap_error_number type, YAP_Term where, YAP_Term extra, const char *msg);
 
   extern yap_error_descriptor_t *Yap_pc_add_location(
       yap_error_descriptor_t * t, void *pc0, void *b_ptr0, void *env0);
@@ -312,12 +318,23 @@ extern yap_error_descriptor_t *Yap_pushErrorContext(bool pass,
 						    yap_error_descriptor_t *new_error, yap_error_descriptor_t *old);
  extern yap_error_descriptor_t *Yap_popErrorContext(bool oerr, bool pass, yap_error_descriptor_t *);
 
- void Yap_must_be_list0(YAP_Term t);
- bool Yap_must_be_callable(YAP_Term t, YAP_Term m);
+extern YAP_Term Yap_MkErrorYAP_Term(struct s_yap_error_descriptor *t);
+extern bool Yap_Warning(const char *s, ...);
+extern bool Yap_PrintWarning(YAP_Term t, YAP_Term level);
+extern bool Yap_HandleError__(const char *file, const char *function, int lineno,
+                       const char *s, ...);
+#define Yap_HandleError(...)                                                   \
+  Yap_HandleError__(__FILE__, __FUNCTION__, __LINE__, __VA_ARGS__)
+extern int Yap_SWIHandleError(const char *, ...);
+extern void Yap_InitErrorPreds(void);
+extern bool Yap_callable(YAP_Term t);
+ extern bool Yap_must_be_callable(YAP_Term t, YAP_Term mod);
 
 #include "ScannerTypes.h"
+     
+ extern char *Yap_syntax_error__(const char *file, const char *function, int lineno, YAP_Term t, int sno, TokEntry *start,
+                              TokEntry *err, char *s,  ...);
 
- extern char *  Yap_syntax_error__(const char *file, const char *function, int lineno, YAP_Term t, int sno, struct TOKEN *b, struct TOKEN *m, char *s,...);
- #endif
+#endif
 
-  
+/// @}

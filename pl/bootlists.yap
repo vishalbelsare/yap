@@ -7,7 +7,7 @@
  * @{
 */
 
-:- system_module( '$_lists', [], []).
+:- system_module_( '$_lists', [], []).
 
 
 %   memberchk(+Element, +Set)
@@ -40,9 +40,9 @@ to test for an element or to enumerate all the elements by backtracking.
 
 
 */
-'$member'(X,[X|_]).
-'$member'(X,[_|L]) :-
-       '$member'(X,L).
+member(X,[X|_]).
+member(X,[_|L]) :-
+       member(X,L).
 
 %% @pred  identical_member(?Element, ?Set) is nondet
 %
@@ -108,7 +108,7 @@ of length  _S_.
 */
 
 prolog:length(L, M) :-
-    '$skip_list'(L, M, M0, R),
+    skip_list(L, M, M0, R),
          ( var(R) -> '$$_length'(R, M, M0) ;
            R == []
          ).

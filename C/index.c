@@ -293,7 +293,7 @@
  *   UPDATE: compilation flags -DTABLING_BATCHED_SCHEDULING and
  *-DTABLING_LOCAL_SCHEDULING removed. To support tabling use -DTABLING in the
  *Makefile or --enable-tabling in configure.
- *   NEW: yap_flag(tabling_mode,MODE) changes the tabling execution mode of all
+ *   NEW: set_problog_flag(tabling_mode,MODE) changes the tabling execution mode of all
  *tabled predicates to MODE (batched, local or default).
  *   NEW: tabling_mode(PRED,MODE) changes the default tabling execution mode of
  *predicate PRED to MODE (batched or local).
@@ -381,6 +381,7 @@
  *
  * Revision 1.99  2004/09/27 20:45:03  vsc
  * Mega clauses
+
  * Fixes to sizeof(expand_clauses) which was being overestimated
  * Fixes to profiling+indexing
  * Fixes to reallocation of memory after restoring
@@ -471,7 +472,7 @@ static char SccsId[] = "%W% %G%";
    @file index.c
 
    @defgroup Indexing Indexing
-   @ingroup YAPProgramming
+   @ingroup YAPImplementation
 
    The
    indexation mechanism restricts the set of clauses to be tried in a
@@ -660,12 +661,12 @@ static UInt do_index(ClauseDef *, ClauseDef *, struct intermediates *, UInt,
 static UInt do_compound_index(ClauseDef *, ClauseDef *, Term *t,
                               struct intermediates *, UInt, UInt, UInt, UInt,
                               int, int, int, CELL *, int);
-static UInt do_dbref_index(ClauseDef *, ClauseDef *, Term,
-                           struct intermediates *, UInt, UInt, int, int,
-                           CELL *);
 static UInt do_blob_index(ClauseDef *, ClauseDef *, Term,
                           struct intermediates *, UInt, UInt, int, int, CELL *,
                           int);
+static UInt do_dbref_index(ClauseDef *min, ClauseDef *max, Term t,
+                           struct intermediates *cint, UInt argno, UInt fail_l,
+                           int first, int clleft, CELL *top);
 
 static UInt cleanup_sw_on_clauses(CELL larg, UInt sz, OPCODE ecls) {
   if (larg & 1) {
@@ -980,7 +981,7 @@ static void sort_group(GroupDef *grp, CELL *top, struct intermediates *cint) {
   if (!(base = (CELL *)Yap_AllocCodeSpace(2 * max * sizeof(CELL)))) {
     CACHE_REGS
       save_machine_regs();
-    LOCAL_Error_Size = 2 * max * sizeof(CELL);
+    LOCAL_Error_Size = 2 * (max+1) * sizeof(CELL);
     siglongjmp(cint->CompilerBotch, 2);
   }
 #else
@@ -2245,7 +2246,7 @@ static UInt do_funcs(GroupDef *grp, Term t, struct intermediates *cint,
     if (IsExtensionFunctor(f)) {
       if (f == FunctorDBRef)
         ifs->u_f.Label = do_dbref_index(min, max, t, cint, argno, nxtlbl, first,
-                                        clleft, top);
+				       clleft, top);
       else if (f == FunctorLongInt || f == FunctorBigInt)
         ifs->u_f.Label = do_blob_index(min, max, t, cint, argno, nxtlbl, first,
                                        clleft, top, FALSE);
@@ -4098,6 +4099,8 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
   yamop **labp;
   int cb;
   struct intermediates cint;
+  yap_error_descriptor_t *old, new;
+  bool ex_mode;
 
   cint.blks = NULL;
   cint.cls = NULL;
@@ -4162,7 +4165,15 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
       return FAILCODE;
     }
   }
- restart_index:
+    restart_index:
+
+  if ((ex_mode = Yap_HasException(PASS_REGS1)))
+    {
+      old = LOCAL_ActiveError;
+      LOCAL_ActiveError = &new;
+      Yap_ResetException(&new);
+    }
+
   cint.CodeStart = cint.cpc = cint.BlobsStart = cint.icpc = NIL;
   cint.CurrentPred = ap;
   LOCAL_Error_TYPE = YAP_NO_ERROR;
@@ -4193,6 +4204,9 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
     }
     Yap_ReleaseCMem(&cint);
     CleanCls(&cint);
+   if (ex_mode) {
+      LOCAL_ActiveError = old;
+    }
     return FAILCODE;
   }
 #if DEBUG
@@ -4221,7 +4235,10 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
     }
     Yap_ReleaseCMem(&cint);
     CleanCls(&cint);
-    return *labp;
+   if (ex_mode) {
+      LOCAL_ActiveError = old;
+    }
+     return *labp;
   }
   if (indx_out == NULL) {
     if (expand_clauses) {
@@ -4230,17 +4247,23 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
     }
     Yap_ReleaseCMem(&cint);
     CleanCls(&cint);
+   if (ex_mode) {
+      LOCAL_ActiveError = old;
+    }
     return FAILCODE;
   }
   Yap_ReleaseCMem(&cint);
   CleanCls(&cint);
+   if (ex_mode) {
+      LOCAL_ActiveError = old;
+    }
   *labp = indx_out;
   if (ap->PredFlags & LogUpdatePredFlag) {
     /* add to head of current code children */
     LogUpdIndex *ic = cint.current_cl.lui,
       *nic = ClauseCodeToLogUpdIndex(indx_out);
     if (ic == NULL)
-      ic = (LogUpdIndex *)Yap_find_owner_index((yamop *)labp, ap);
+      ic = Yap_find_owner_index((yamop *)labp, ap).lui;
     /* insert myself in the indexing code chain */
     nic->SiblingIndex = ic->ChildIndex;
     nic->PrevSiblingIndex = NULL;
@@ -4256,7 +4279,7 @@ static yamop *ExpandIndex(PredEntry *ap, int ExtraArgs,
     StaticIndex *ic = cint.current_cl.si,
       *nic = ClauseCodeToStaticIndex(indx_out);
     if (ic == NULL)
-      ic = (StaticIndex *)Yap_find_owner_index((yamop *)labp, ap);
+      ic = Yap_find_owner_index((yamop *)labp, ap).si;
     /* insert myself in the indexing code chain */
     nic->SiblingIndex = ic->ChildIndex;
     ic->ChildIndex = nic;

@@ -15,7 +15,7 @@
 *									 *
 *************************************************************************/
 
-:- system_module( style_checker, [no_style_check/1,
+:- system_module_( style_checker, [no_style_check/1,
         style_check/1], ['$check_term'/5,
         '$sv_warning'/2,
         '$syntax_check_discontiguous'/2,
@@ -27,7 +27,8 @@
 /**
 
 @defgroup   YAPStyleChecker YAP Style Checker
-    @ingroup  YAPCompilerSettings
+@ingroup  YAPCompilerSettings
+
 
 YAP implements a style-checker thay currently verifies whether:
 
@@ -120,7 +121,7 @@ style_check(-charset) :-
 	'$style_checker'( [  -charset ] ).
 style_check('?'(Info) ) :-
 	L =  [ singleton, discontiguous, multiple ],
-	( '$member'(Style, L ) -> Info = +Style ; Info = -Style ).
+	( member(Style, L ) -> Info = +Style ; Info = -Style ).
 style_check([]).
 style_check([H|T]) :- style_check(H), style_check(T).
 
@@ -156,11 +157,9 @@ separated by clauses from other procedures.
 
 */
 
-discontiguous(P) :- '$discontiguous'(P).
-
 :- op(1150, fx, [multifile,discontiguous]).
 
 
-/*
+/**
 @}
 */

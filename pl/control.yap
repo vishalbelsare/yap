@@ -1,4 +1,4 @@
-s/*************************************************************************
+/*************************************************************************
 *									 *
 *	 YAP Prolog 							 *
 *									 *
@@ -25,7 +25,7 @@ s/*************************************************************************
  *
 */
 
-:- system_module( '$_control', [at_halt/1,
+:- system_module_( '$_control', [at_halt/1,
         b_getval/2,
         break/0,
         call/2,
@@ -82,13 +82,9 @@ s/*************************************************************************
 
 @addtogroup YAPControl
 
-%% @{
+@{
 
 */
-
-'$comma'(PA,A,PB,B) :-
-   '$exec'(PA,A),
-   '$exec'(PB,B).
 
 /** @pred  forall(: _Cond_,: _Action_)
 
@@ -151,6 +147,52 @@ notrace(G) :-
 	'$debug_restart'( State ),
 	fail
     ).
+/** @pred  (G *-> H)
+
+Call goal  _H_ once per each solution of goal  _G_.
+
+The built-in `*->3` is usually called from within a disjunction. It
+performs similar to `->/3`, with the difference that it will backtrack
+over the test goal. Consider the following small data-base:
+
+```{.prolog}
+a(1).        b(a).          c(x).
+a(2).        b(b).          c(y).
+```
+
+Execution of an *->/3 query will proceed as follows:
+
+```{.prolog}
+   ?- (a(X)->b(Y);c(Z)).
+
+X = 1,
+Y = a ? ;
+
+X = 1,
+Y = b ? ;
+
+X = 2,
+Y = a ? ;
+
+X = 2,
+Y = b ? ;
+
+no
+```
+
+The system will backtrack over the two solutions for `a/1` and the
+two solutions for `b/1`, generating four solutions.
+
+Cuts are allowed inside the first goal  _G_, but they will only prune
+over  _G_.
+
+If you want  _G_ to be deterministic you should use if-then-else, as
+it is both more efficient and more portable.
+
+*/
+(X *-> Y ) :-
+  X, Y.
+
 
 /** @pred  if(? _G_,? _H_,? _I_)
 
@@ -166,7 +208,7 @@ a(1).        b(a).          c(x).
 a(2).        b(b).          c(y).
 ```
 
-Execution of an `if/3` query will proceed as follows:
+Execution of an if/3 query will proceed as follows:
 
 ```{.prolog}
    ?- if(a(X),b(Y),c(Z)).
@@ -209,6 +251,38 @@ between 0 and 10.
 
 */
 
+/**
+   @pred gated_call(0:Setup, 0:Goal, ?Port, 0:Handler)
+
+   This predicate watches over execution of _Goal_:
+   - First, it calls `once(Setup)`;
+   - Next, it executes `call(Goal)`;
+   - if `call(Goal)` succeeds deterministically, it unifies _Port_ with `exit` and if unification succeeds calls _Handler_;
+   - if `call(Goal)` succeeds not-deterministically, it unifies _Port_ with `answer` and if unification succeeds calls _Handler_;
+   - if execution backtracks to _Goal_, it  unifies _Port_ with `redo` and if unification succeeds calls _Handler_;
+    - if execution of _Goal_ fails, it  unifies _Port_ with `fail` and if unification succeeds calls _Handler_;
+    - if execution of _Goal_ is pruned by an external goal, it  unifies _Port_ with `!` and if unification succeeds calls _Handler_;
+    - if execution of _Goal_ raises an exception _E_, it  unifies _Port_ with `exception(E)` and if unification succeeds calls _Handler_;
+    - if  _Goal_ has open alternatives that are discared by an exception  _E_, it  unifies _Port_ with `external_exception(E)` and if unification succeeds calls _Handler_.
+
+    
+  
+   */
+   
+gated_call(Setup, Goal, Catcher, Cleanup) :-
+    '$setup_call_catcher_cleanup'(Setup), 
+    '$gated_call'( true , Goal, Catcher, Cleanup)  .
+
+'$gated_call'( All , Goal, Catcher, Cleanup) :-
+    Task0 = bottom( All, Catcher, Cleanup, Tag, true, CP0),
+    '$tag_cleanup'(CP0, Task0),
+    TaskF = top( All, Catcher, Cleanup, Tag, false, CP0),
+
+    strip_module(Goal,M,G),
+    '$execute'( M:G ),
+    '$cleanup_on_exit'(CP0, TaskF).
+
+
 /** @pred call_cleanup(: _Goal_, : _CleanUpGoal_)
 
 This is similar to call_cleanup/1 but with an additional
@@ -216,33 +290,167 @@ This is similar to call_cleanup/1 but with an additional
 
 */
 call_cleanup(Goal, Cleanup) :-
-'$gated_call'( false , Goal,_Catcher, Cleanup)  .
+	gated_call( true , Goal, Catcher, prolog:cleanup_handler(Catcher,open(_),Cleanup)).
 
 call_cleanup(Goal, Catcher, Cleanup) :-
-'$gated_call'( false , Goal, Catcher, Cleanup)  .
+	gated_call( true , Goal, Catcher , prolog:cleanup_handler(Catcher,open(_),Cleanup)).
 
 /** @pred setup_call_cleanup(: _Setup_,: _Goal_, : _CleanUpGoal_)
 
 
-Calls `(Setup, Goal)`. For each sucessful execution of _Setup_,
-calling _Goal_, the cleanup handler _Cleanup_ is guaranteed to be
+Calls `(once(Setup), Goal)`. For each sucessful execution of _Setup_,
+calling _Goal_, YAP will call the cleanup handler with `ignore(_Cleanup_)`.
+The goal is guaranteed to be
 called exactly once.  This will happen after _Goal_ completes, either
 through failure, deterministic success, commit, or an exception.
 _Setup_ will contain the goals that need to be protected from
 asynchronous interrupts such as the ones received from
-`call_with_time_limit/2` or thread_signal/2.  In most uses, _Setup_
+call_with_time_limit/2 or thread_signal/2.  In most uses, _Setup_
 will perform temporary side-effects required by _Goal_ that are
 finally undone by _Cleanup_.
+
+
 
 */
 
 setup_call_cleanup(Setup,Goal, Cleanup) :-
-	setup_call_catcher_cleanup(Setup, Goal, _Catcher, Cleanup).
+	gated_call( Setup , Goal, Catcher , prolog:cleanup_handler(Catcher,open(_),Cleanup)).
+
+
 
 setup_call_catcher_cleanup(Setup, Goal, Catcher, Cleanup) :-
-    '$setup_call_catcher_cleanup'(Setup),
-	call_cleanup(Goal, Catcher, Cleanup).
+	gated_call( Setup , Goal, Catcher , prolog:cleanup_handler(Catcher,open(_),Cleanup)).
 
+
+prolog:cleanup_handler(Catcher,_Open,Cleanup) :-
+    '$is_catcher'(Catcher),
+    (Cleanup->true;true).
+
+'$is_catcher'(exit).
+'$is_catcher'(fail).
+'$is_catcher'(!).
+'$is_catcher'(exception(_)).
+'$is_catcher'(external_exception(_)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   catch/throw implementation
+
+% at each catch point I need to know:
+% what is ball;
+% where was the previous catch
+/**
+
+The goal `catch( _Goal_, _Exception_, _Action_)` tries to
+execute goal  _Goal_. If during its execution,  _Goal_ throws an
+exception  _E'_ and this exception unifies with  _Exception_, the
+exception is considered to be caught and  _Action_ is executed. If
+the exception  _E'_ does not unify with  _Exception_, control
+again throws the exception.
+
+The top-level of YAP maintains a default exception handler that
+is responsible to capture uncaught exceptions.
+
+
+*/
+
+catch(MG,E,G) :-
+    '$catch'(MG,E,G,_,_Done).
+
+'$catch'(MG,_E,_G,Marker,Done) :-
+    '$marker'(Marker),
+    current_choice_point(CP0),
+    '$execute0'(MG),
+    Done = true,
+    current_choice_point(CP),
+    (CP == CP0 -> !;true).
+
+'$catch'(_MG,E,G,_,_) :-    
+    '$drop_exception'(E0,Info),
+    nonvar(E0),
+    (
+	E = E0
+    ->
+	(
+	    strip_module(G,_,error_handler )
+	->
+	(
+	    E = error(K,U)
+	->
+	%Info = NewInfo,
+	'$extend_info'(Info,U, NewInfo),
+	error_handler(error,error(K,NewInfo))
+	;
+	print_message(warning,error(existence_error(error_handler,E),catch)),
+	fail
+	)
+	;
+	call(G)
+	)
+    ;
+    throw(E0)
+    ).
+    	
+'$rm_user_wrapper'(error(user_defined_error(user_defined_error,EW),_),E0) :-
+    !,
+    '$rm_user_wrapper'(EW,E0).
+'$rm_user_wrapper'(error(user_defined_error,EW),E0) :-
+    !,
+    '$rm_user_wrapper'(EW,E0).
+'$rm_user_wrapper'(E,E).
+
+'$extend_info'(Info0, Hints0, Info) :-
+    '$mk_info'(Info0, Info),
+    '$mk_hints'(Hints0, Hints),
+    '$add_hints'(Hints, Info).
+
+
+'$mk_info'(Info0, Info) :-
+    var(Info0),
+    !,
+    '$new_exception'(Info).
+'$mk_info'(Info0, Info) :-
+    is_list(Info0),
+    !,
+    '$new_exception'(Info),
+    '$add_hints'(Info0,Info).
+'$mk_info'(Info, Info).
+
+'$mk_hints'(Hints0, []) :-
+    var(Hints0),
+    !.
+'$mk_hints'(Hints, Hints) :-
+    is_list(Hints),
+    !.
+'$mk_hints'(Hints0, Hints) :-
+    atom(Hints0),
+    !,
+    (
+	atom_to_term(Hints0,Hints),
+	Hints  = [_=_|_]
+    ;
+    atom_to_string(Hints0,Msg),
+    Hints = [errorMsg=Msg]
+    ),
+    !.
+'$mk_hints'(Hints0, Hints) :-
+    string(Hints0),
+    (
+	string_to_term(Hints0,Hints),
+	Hints  = [_=_|_]
+    ;
+    Hints = [errorMsg=Hints0]
+    ),
+    !.
+'$mk_hints'(K=V, [K=V]) :-
+    !.
+'$mk_hints'(Hint0, [errorMsg=Msg]) :-
+    term_to_string(Hint0,Msg) .
+
+'$add_hints'([],_).
+'$add_hints'([K=V|KVs], exception(Data)) :-
+    '$set_exception'(K,Data, V),
+    '$add_hints'(KVs,exception(Data)).
 
 /** @pred  call_with_args(+ _Name_,...,? _Ai_,...)
 
@@ -286,22 +494,22 @@ grow_stack(X) :- '$grow_stack'(X).
 
 
 The goal `gc` enables garbage collection. The same as
-`yap_flag(gc,on)`.
+`current_prolog_flag(gc,on)`.
 
 
 */
 gc :-
-	yap_flag(gc,true).
+	current_prolog_flag(gc,true).
 /** @pred  nogc
 
 
 The goal `nogc` disables garbage collection. The same as
-`yap_flag(gc,false)`.
+`current_prolog_flag(gc,false)`.
 
 
 */
 nogc :-
-	yap_flag(gc,false).
+	current_prolog_flag(gc,false).
 
 
 /** @pred  garbage_collect_atoms
@@ -339,7 +547,7 @@ prolog_initialization(G) :- var(G), !,
 prolog_initialization(T) :- must_be_callable(T), !,
 	'$assert_init'(T).
 prolog_initialization(T) :-
-	throw_error(type_error(callable,T),initialization(T)).
+	throw_error(type_error(callable,T) ,initialization(T)).
 
 '$assert_init'(T) :- recordz('$startup_goal',T,_), fail.
 '$assert_init'(_).
@@ -364,7 +572,7 @@ possible to remove messages.
 
 */
 version(V) :- var(V),  !,
-	throw_error(instantiation_error,version(V)).
+	throw_r(instantiation_error,version(V)).
 version(T) :- atom(T), !, '$assert_version'(T).
 version(T) :-
 	throw_error(type_error(atom,T),version(T)).
@@ -381,136 +589,38 @@ version(T) :-
 	fail.
 '$set_toplevel_hook'(_).
 
-%% @{
-
-%% @addtogroup Global_Variables
-
-/** @pred  nb_getval(+ _Name_, - _Value_)
-
-
-The nb_getval/2 predicate is a synonym for b_getval/2,
-introduced for compatibility and symmetry. As most scenarios will use
-a particular global variable either using non-backtrackable or
-backtrackable assignment, using nb_getval/2 can be used to
-document that the variable is used non-backtrackable.
-
-
-*/
-/** @pred nb_getval(+ _Name_,- _Value_)
-
-
-The nb_getval/2 predicate is a synonym for b_getval/2, introduced for
-compatibility and symmetry.  As most scenarios will use a particular
-global variable either using non-backtrackable or backtrackable
-assignment, using nb_getval/2 can be used to document that the
-variable is used non-backtrackable.
-
-
-*/
-nb_getval(GlobalVariable, Val) :-
-	'__NB_getval__'(GlobalVariable, Val, Error),
-	(var(Error)
-	->
-	 true
-	;
-	 '$getval_exception'(GlobalVariable, Val, nb_getval(GlobalVariable, Val)) ->
-	 nb_getval(GlobalVariable, Val)
-	;
-	 throw_error(existence_error(variable, GlobalVariable),nb_getval(GlobalVariable, Val))
-	).
-
-
-/** @pred  b_getval(+ _Name_, - _Value_)
-
-
-Get the value associated with the global variable  _Name_ and unify
-it with  _Value_. Note that this unification may further
-instantiate the value of the global variable. If this is undesirable
-the normal precautions (double negation or copy_term/2) must be
-taken. The b_getval/2 predicate generates errors if  _Name_ is not
-an atom or the requested variable does not exist.
-
-Notice that for compatibility with other systems  _Name_ <em>must</em> be already associated with a term: otherwise the system will generate an error.
-
-
-*/
-/** @pred b_getval(+ _Name_,- _Value_)
-
-
-Get the value associated with the global variable  _Name_ and unify
-it with  _Value_. Note that this unification may further instantiate
-the value of the global variable. If this is undesirable the normal
-precautions (double negation or copy_term/2) must be taken. The
-b_getval/2 predicate generates errors if  _Name_ is not an atom or
-the requested variable does not exist.
-
-
-*/
-b_getval(GlobalVariable, Val) :-
-	'__NB_getval__'(GlobalVariable, Val, Error),
-	(var(Error)
-	->
-	 true
-	;
-	 '$getval_exception'(GlobalVariable, Val, b_getval(GlobalVariable, Val)) ->
-	 true
-	;
-	 throw_error(existence_error(variable, GlobalVariable),b_getval(GlobalVariable, Val))
-	).
-
-'$getval_exception'(GlobalVariable, _Val, Caller) :-
-	user:exception(undefined_global_variable, GlobalVariable, Action),
-	!,
-	(
-	 Action == fail
-	->
-	 fail
-	;
-	 Action == retry
-	->
-	 true
-	;
-	 Action == error
-	->
-	 throw_error(existence_error(variable, GlobalVariable),Caller)
-	;
-	 throw_error(type_error(atom, Action),Caller)
-	).
-
-
-%% @}
-
-%% @{
-
-%% @addtogroup YAPControl
 
 /* This is the break predicate,
 	it saves the importante data about current streams and
 	debugger state */
 
-'$debug_state'(state(Creep, SPYTarget,SpyOn,Trace,Debugging, Debug, SPY_GN, GList, GDList)) :-
+'$debug_state'(state(Creep, SPYTarget,SpyOn,Trace, Debug, SPY_GN, GList)) :-
 	'$init_debugger',
-	'$get_debugger_state'(Creep, SPYTarget,SpyOn,Trace,Debugging),
+	nb_getval(creep,Creep),
+	nb_getval('$spy_on',SpyOn),
+	nb_getval('$spy_target',SPYTarget),
 	current_prolog_flag(debug, Debug),
+	current_prolog_flag(trace, Trace),
 	nb_getval('$spy_gn',SPY_GN),
-	b_getval('$spy_glist',GList),
-	b_getval('$spy_gdlist',GDList).
+	b_getval('$spy_glist',GList).
 
 
 '$debug_stop' :-
-	'$set_debugger_state'(trace,off),
+	 set_prolog_flag(trace,false),
 	set_prolog_flag(debug, false),
+	nb_setval('$spy_on',true),
+	nb_setval('$spy_target',-1),
 	b_setval('$spy_gn',0),
-	b_setval('$spy_glist',[]),
-	b_setval('$spy_gdlist',[]),
-	'$disable_debugging'.
+	b_setval('$spy_glist',[]                                              ).
 
- '$debug_restart'(state(Creep, SPYTarget,SpyOn,Trace,Debugging, Debug, SPY_GN, GList, GDList)) :-
+ '$debug_restart'(state(Creep, SPYTarget,SpyOn,Trace, Debug, SPY_GN, GList)) :-
 	b_setval('$spy_glist',GList),
-	b_setval('$spy_gdlist',GDList),
 	b_setval('$spy_gn',SPY_GN),
-	'$set_debugger_state'(Creep, SPYTarget,SpyOn,Trace,Debugging),
+	nb_setval('$spy_on',SpyOn),
+	nb_setval('$spy_target',SPYTarget),
+	nb_setval(creep,Creep),
 	set_prolog_flag(debug, Debug),
+	set_prolog_flag(trace, Trace),
  	'$enable_debugging'.
 
 /** @pred  break
@@ -569,9 +679,9 @@ Halts Prolog, and exits to 1the calling application returning the code
 given by the integer  _I_.
 
 */
-halt(_) :-
+halt(_V) :-
 	recorded('$halt', G, _),
-	catch(once(G), Error, user:'$Error'(Error)),
+	catch(once(G), _Error, error_handler),
 	fail.
 halt(X) :-
 	'$sync_mmapped_arrays',
@@ -584,7 +694,8 @@ prolog_current_frame(Env) :-
 '$run_atom_goal'(GA) :-
 	'$current_module'(Module),
 	atom_to_term(GA, G, _),
-	catch(once(Module:G), Error,user:'$Error'(Error)).
+	catch(Module:G, _Error,error_handler),
+	!.
 
 '$add_dot_to_atom_goal'([],[0'.]) :- !. %'
 '$add_dot_to_atom_goal'([0'.],[0'.]) :- !.
@@ -598,10 +709,11 @@ prolog_current_frame(Env) :-
    This predicate ensures that both deterministic and non-deterministic execution of the goal $G$ takes place in the context of goal _G_?
 **/
 
-meta_predicate yap_hacks:call_in_module(0).
+:- meta_predicate yap_hacks:call_in_module(0).
 
 
-yap_hacks:call_in_module(M:G) :-
+   
+call_in_module(M:G) :-
     gated_call(
 	'$module_boundary'(call, M0, M),
 	call(G),
@@ -626,6 +738,154 @@ yap_hacks:call_in_module(M:G) :-
 '$module_boundary'(exception(_), M0, _M) :-
     current_source_module(_, M0).
 
+
+:-  meta_predicate(call_nth(0,?)).
+
+/**
+ * @pred call_nth(G,N)
+ *
+ * Call _G_ unifying _N_ with the number of answers so far.
+ *
+ * An example is:
+ * ```
+ * ?- call_nth(between(1,10,N),N).
+ * N=1 ;
+ * N=2 ;
+ * N=3
+ * ```
+ * when _N is bound:
+ * ```
+ * ?- call_nth(between(1,6,X),3).
+ * X=3
+ * ```
+ */
+call_nth(Goal_0, Nth) :-
+   (
+     nonvar(Nth)
+       ->
+       Nth \== 0,
+       \+arg(Nth,+ 1,2), % produces all expected errors
+       State = count(0,_), % note the extra argument which remains a variable
+       call(Goal_0),
+       arg(1, State, C1),
+       C2 is C1+1,
+       (
+       Nth == C2
+   ->
+ !
+   ;
+  nb_setarg(1, State, C2),
+	 fail
+   )
+   ;
+       State = count(0,_), % note the extra argument which remains a variable
+       Goal_0,
+       arg(1, State, C1),
+       C2 is C1+1,
+       nb_setarg(1, State, C2),
+       Nth = C2
+   ).
+
+ 
 /**
 @}
 */
+
+%% @addtogroup Global_Variables
+%% @{
+
+/** @pred  nb_getval(+ _Name_, - _Value_)
+
+
+The nb_getval/2 predicate is a synonym for b_getval/2,
+introduced for compatibility and symmetry. As most scenarios will use
+a particular global variable either using non-backtrackable or
+backtrackable assignment, using nb_getval/2 can be used to
+document that the variable is used non-backtrackable.
+
+
+*/
+/** @pred nb_getval(+ _Name_,- _Value_)
+
+
+The nb_getval/2 predicate is a synonym for b_getval/2, introduced for
+compatibility and symmetry.  As most scenarios will use a particular
+global variable either using non-backtrackable or backtrackable
+assignment, using nb_getval/2 can be used to document that the
+variable is used non-backtrackable.
+
+
+*/
+nb_getval(GlobalVariable, Val) :-
+	'__NB_getval__'(GlobalVariable, Val, Error),
+	(var(Error)
+	->
+	 true
+	;
+	 '$getval_exception'(GlobalVariable, Val, nb_getval(GlobalVariable, Val)) ->
+	 nb_getval(GlobalVariable, Val)
+	;
+	 throw_error(existence_error(variable, GlobalVariable),nb_getval(GlobalVariable, Val))
+	).
+
+
+/** @pred  b_getval(+ _Name_, - _Value_)
+
+
+Get the value associated with the global variable  _Name_ and unify
+it with  _Value_. Note that this unification may further
+instantiate the value of the global variable. If this is undesirable
+the normal precautions (double negation or copy_term/2) must be
+taken. The b_getval/2 predicate generates errors if  _Name_ is not
+an atom or the requested variable does not exist.
+
+Notice that for compatibility with other systems  _Name_ <em>must</em> be already associated with a term: otherwise the system will generate an error.
+
+
+*/
+/** @pred b_getval(+ _Name_,- _Value_)
+
+
+Get the value associated with the global variable  _Name_ and unify
+it with  _Value_. Note that this unification may further instantiate
+[the value of the global variable. If this is undesirable the normal
+precautions (double negation or copy_term/2) must be taken. The
+b_getval/2 predicate generates errors if  _Name_ is not an atom or
+the requested variable does not exist.
+
+
+*/
+b_getval(GlobalVariable, Val) :-
+	'__NB_getval__'(GlobalVariable, Val, Error),
+	(var(Error)
+	->
+	 true
+	;
+	 '$getval_exception'(GlobalVariable, Val, b_getval(GlobalVariable, Val)) ->
+	 true
+	;
+	 throw_error(existence_error(variable, GlobalVariable),b_getval(GlobalVariable, Val))
+	).
+
+'$getval_exception'(GlobalVariable, _Val, Caller) :-
+	user:exception(undefined_global_variable, GlobalVariable, Action),
+	!,
+	(
+	 Action == fail
+	->
+	 fail
+	;
+	 Action == retry
+	->
+	 true
+	;
+	 Action == error
+	->
+	 throw_error(existence_error(variable, GlobalVariable),Caller)
+	;
+	 throw_error(type_error(atom, Action),Caller)
+	).
+
+
+%% @}
+

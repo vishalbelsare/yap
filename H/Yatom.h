@@ -24,34 +24,6 @@
 
 #include "Atoms.h"
 
-#ifdef USE_OFFSETS
-
-INLINE_ONLY Atom AbsAtom(AtomEntry *p);
-
-INLINE_ONLY Atom AbsAtom(AtomEntry *p) {
-  return (Atom)(Addr(p) - AtomBase);xp
-}
-
-INLINE_ONLY AtomEntry *RepAtom(Atom a);
-
-INLINE_ONLY AtomEntry *RepAtom(Atom a) {
-  return (AtomEntry *) (AtomBase + Unsigned (a);
-}
-
-#else
-
-INLINE_ONLY Atom AbsAtom(AtomEntry *p);
-
-INLINE_ONLY Atom AbsAtom(AtomEntry *p) { return (Atom)(p); }
-
-INLINE_ONLY AtomEntry *RepAtom(Atom a);
-
-INLINE_ONLY AtomEntry *RepAtom(Atom a) {
-  return (AtomEntry *)(a);
-}
-
-#endif
-
 #if USE_OFFSETS_IN_PROPS
 
 INLINE_ONLY Prop AbsProp(PropEntry *p);
@@ -152,12 +124,6 @@ INLINE_ONLY PropFlags IsFunctorProperty(int flags) {
 typedef struct global_entry {
   Prop NextOfPE;      /* used to chain properties             */
   PropFlags KindOfPE; /* kind of property                     */
-#if defined(YAPOR) || defined(THREADS)
-  rwlock_t GRWLock; /* a simple lock to protect this entry */
-#if THREADS
-  unsigned int owner_id; /* owner thread */
-#endif
-#endif
   struct AtomEntryStruct *AtomOfGE; /* parent atom for deletion */
   struct global_entry *NextGE;      /* linked list of global entries */
   Term global;                      /* index in module table                */
@@ -515,7 +481,7 @@ don't forget to also add in qly.h
   (AsmPredFlag | SWIEnvPredFlag | CPredFlag | BinaryPredFlag | UDIPredFlag |   \
    CArgsPredFlag | UserCPredFlag | SafePredFlag | BackCPredFlag)
 #define LivePredFlags                                                          \
-  (LogUpdatePredFlag | MultiFileFlag | TabledPredFlag | ForeignPredFlags)
+  (LogUpdatePredFlag | MultiFileFlag | TabledPredFlag | ForeignPredFlags | DiscontiguousPredFlag | ForeignPredFlags)
 
 #define StatePredFlags                                                         \
   (InUsePredFlag | CountPredFlag | SpiedPredFlag | IndexedPredFlag)
@@ -565,8 +531,9 @@ typedef struct pred_entry {
     };
   } cs;                  /* if needing to spy or to lock         */
   Functor FunctorOfPred; /* functor for Predicate                */
-  union {
-    Atom OwnerFile; /* File where the predicate was defined */
+    struct {
+      Atom OwnerFile; /* File where the predicate was defined */
+      int OwnerLine;
     Int IndxId;     /* Index for a certain key */
   } src;
 #if defined(YAPOR) || defined(THREADS)
@@ -580,7 +547,10 @@ typedef struct pred_entry {
 #endif
   struct yami *MetaEntryOfPred; /* allow direct access from meta-calls */
   Term ModuleOfPred;            /* module for this definition           */
-  UInt TimeStampOfPred;
+  union {
+    UInt TimeStampOfPred;          /* timestamp for LU predicates */
+    int  CallLineForUndefinedPred; /* Line near where an undefined predicate was first called */
+  };
   timestamp_type LastCallOfPred;
   /* This must be at an odd number of cells, otherwise it
      will not be aligned on RISC machines */
@@ -671,21 +641,42 @@ typedef enum {
   /* other flags belong to DB */
 } dbentry_flags;
 
+ 
+#define pred_entry(X)                                                          \
+  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->StateOfPred))))
+#define pred_entry_from_code(X)                                                \
+  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->CodeOfPred))))
+#define PredFromDefCode(X)                                                     \
+  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->OpcodeOfPred))))
+#define PredFromExpandCode(X)                                                  \
+  ((PredEntry *)(Unsigned(X) -                                                 \
+                 (CELL)(&(((PredEntry *)NULL)->cs.p_code.ExpandCode))))
+#define PredCode(X) pred_entry(X)->CodeOfPred
+#define PredOpCode(X) pred_entry(X)->OpcodeOfPred
+#define TruePredCode(X) pred_entry(X)->TrueCodeOfPred
+#define PredFunctor(X) pred_entry(X)->FunctorOfPred
+#define PredArity(X) pred_entry(X)->ArityOfPE
+
+#define FlagOff(Mask, w) !(Mask & w)
+#define FlagOn(Mask, w) (Mask & w)
+#define ResetFlag(Mask, w) w &= ~Mask
+#define SetFlag(Mask, w) w |= Mask
+
+
 /* predicate initialization */
-void Yap_InitCPred(const char *name, arity_t arity, CPredicate f,
+extern void Yap_InitCPred(const char *name, arity_t arity, CPredicate f,
                    pred_flags_t flags);
+extern void Yap_InitCPredInModule(const char *Name, arity_t Arity, CPredicate code,  pred_flags_t flags, Term mod);
 void Yap_InitAsmPred(const char *name, arity_t arity, int code, CPredicate asmc,
                      pred_flags_t flags);
-void Yap_InitCmpPred(const char *name, arity_t arity, CmpPredicate cmp,
+extern void Yap_InitCmpPred(const char *name, arity_t arity, CmpPredicate cmp,
                      pred_flags_t flags);
-void Yap_InitCPredBack(const char *name, arity_t arity, arity_t extra,
+extern void Yap_InitCPredBack(const char *name, arity_t arity, arity_t extra,
                        CPredicate call, CPredicate retry, pred_flags_t flags);
-void Yap_InitCPredBackCut(const char *name, arity_t arity, arity_t extra,
+extern void Yap_InitCPredBackInModule(const char *name, arity_t arity, arity_t extra,  CPredicate call, CPredicate retry, pred_flags_t flags, Term mod);
+extern void Yap_InitCPredBackCut(const char *name, arity_t arity, arity_t extra,
                           CPredicate call, CPredicate retry, CPredicate cut,
                           pred_flags_t flags);
-void Yap_InitCPredBack_(const char *name, arity_t arity, arity_t extra,
-                        CPredicate call, CPredicate retry, CPredicate cut,
-                        pred_flags_t flags);
 
 /* *********************** DBrefs **************************************/
 
@@ -866,15 +857,16 @@ typedef enum {
   DBWithRefs = 0x40
 } db_term_flags;
 
+/** blackboard entry: a module, a key, and a value */
 typedef struct {
-  Prop NextOfPE;      /* used to chain properties                */
-  PropFlags KindOfPE; /* kind of property                        */
-  Atom KeyOfBB;       /* functor for this property               */
-  Term Element;       /* blackboard element                      */
+  Prop NextOfPE;      /**< used to chain properties                */
+  PropFlags KindOfPE; /**< kind of property                        */
+  Atom KeyOfBB;       /**< functor for this property               */
+  Term Element;       /**< blackboard element                      */
 #if defined(YAPOR) || defined(THREADS)
-  rwlock_t BBRWLock; /* a read-write lock to protect the entry */
+  rwlock_t BBRWLock; /**< a read-write lock to protect the entry */
 #endif
-  Term ModuleOfBB; /* module for this definition             */
+  Term ModuleOfBB; /**< module for this definition             */
 } BlackBoardEntry;
 typedef BlackBoardEntry *BBProp;
 
@@ -1098,15 +1090,15 @@ INLINE_ONLY Prop AbsArrayProp(ArrayEntry *p) {
   return (Prop)(Addr(p) - AtomBase);
 }
 
-INLINE_ONLY StaticArrayEntry *RepStaticArrayProp(Prop p);
+INLINE_ONLY ArrayEntry *RepStaticArrayProp(Prop p);
 
-INLINE_ONLY StaticArrayEntry *RepStaticArrayProp(Prop p) {
-  return (StaticArrayEntry *)(AtomBase + Unsigned(p));
+INLINE_ONLY ArrayEntry *RepStaticArrayProp(Prop p) {
+  return (ArrayEntry *)(AtomBase + Unsigned(p));
 }
 
-INLINE_ONLY Prop AbsStaticArrayProp(StaticArrayEntry *p);
+INLINE_ONLY Prop AbsStaticArrayProp(ArrayEntry *p);
 
-INLINE_ONLY Prop AbsStaticArrayProp(StaticArrayEntry *p) {
+INLINE_ONLY Prop AbsStaticArrayProp(ArrayEyntry *p) {
   return (Prop)(Addr(p) - AtomBase);
 }
 
@@ -1122,15 +1114,15 @@ INLINE_ONLY Prop AbsArrayProp(ArrayEntry *p);
 
 INLINE_ONLY Prop AbsArrayProp(ArrayEntry *p) { return (Prop)(p); }
 
-INLINE_ONLY StaticArrayEntry *RepStaticArrayProp(Prop p);
+INLINE_ONLY ArrayEntry *RepStaticArrayProp(Prop p);
 
-INLINE_ONLY StaticArrayEntry *RepStaticArrayProp(Prop p) {
-  return (StaticArrayEntry *)(p);
+INLINE_ONLY ArrayEntry *RepStaticArrayProp(Prop p) {
+  return (ArrayEntry *)(p);
 }
 
-INLINE_ONLY Prop AbsStaticArrayProp(StaticArrayEntry *p);
+INLINE_ONLY Prop AbsStaticArrayProp(ArrayEntry *p);
 
-INLINE_ONLY Prop AbsStaticArrayProp(StaticArrayEntry *p) {
+INLINE_ONLY Prop AbsStaticArrayProp(ArrayEntry *p) {
   return (Prop)(p);
 }
 
@@ -1266,7 +1258,7 @@ void Yap_UpdateTimestamps(PredEntry *);
 
 /* dbase.c */
 void Yap_ErDBE(DBRef);
-DBTerm *Yap_StoreTermInDB(Term, int);
+DBTerm *Yap_StoreTermInDB(Term);
 DBTerm *Yap_StoreTermInDBPlusExtraSpace(Term, UInt, UInt *);
 Term Yap_FetchTermFromDB(void *);
 Term Yap_FetchClauseTermFromDB(void *);
@@ -1380,7 +1372,9 @@ INLINE_ONLY Prop PredPropByFunc(Functor fe, Term cur_mod)
     FUNC_WRITE_UNLOCK(fe);
     return p0;
   }
-  return Yap_NewPredPropByFunctor(fe, cur_mod);
+  Prop pf = Yap_NewPredPropByFunctor(fe, cur_mod);
+  WRITE_UNLOCK(fe->FRWLock);
+  return pf;
 }
 
 INLINE_ONLY Prop
@@ -1426,15 +1420,16 @@ GetPredPropByFuncAndModHavingLock(FunctorEntry *fe, Term cur_mod) {
 INLINE_ONLY Prop PredPropByFuncAndMod(Functor fe, Term cur_mod)
 /* get predicate entry for ap/arity; create it if neccessary.              */
 {
-  Prop p0;
-
+  Prop p0, p;
   FUNC_WRITE_LOCK(fe);
   p0 = GetPredPropByFuncAndModHavingLock(fe, cur_mod);
   if (p0) {
     FUNC_WRITE_UNLOCK(fe);
     return p0;
   }
-  return Yap_NewPredPropByFunctor(fe, cur_mod);
+  p = Yap_NewPredPropByFunctor(fe, cur_mod); 
+  FUNC_WRITE_UNLOCK(fe);
+  return p;
 }
 
 INLINE_ONLY Prop PredPropByAtom(Atom at, Term cur_mod)
@@ -1545,13 +1540,26 @@ INLINE_ONLY const char *AtomTermName(Term t) {
   return RepAtom(AtomOfTerm(t))->rep.uStrOfAE;
 }
 
-  extern bool Yap_RestartException(yap_error_descriptor_t *  i);
+INLINE_ONLY const char *StrOfAtom(Atom a) {
+    return RepAtom((a))->StrOfAE;
+}
+
+INLINE_ONLY unsigned const char *UStrOfAtom(Atom a) {
+    return RepAtom((a))->UStrOfAE;
+}
+
+INLINE_ONLY const unsigned char *UStrOfAtomTerm(Term a) {
+    return RepAtom(AtomOfTerm(a))->UStrOfAE;
+}
+
+
+
+extern bool Yap_RestartException(yap_error_descriptor_t *  i);
 extern bool Yap_ResetException(yap_error_descriptor_t *i);
-extern bool Yap_HasException(USES_REGS1);
 extern yap_error_descriptor_t *Yap_GetException(void);
 extern yap_error_descriptor_t *Yap_PeekException(void);
 INLINE_ONLY bool Yap_HasException(USES_REGS1) {
-  return LOCAL_ActiveError->errorNo  != 0L && B->cp_ap->y_u.Otapl.p == PredCatch;
+  return LOCAL_ActiveError->errorNo  != 0L ;
 }
 /* INLINE_ONLY void *Yap_RefToException(void) { */
 /*     void *dbt = Yap_StoreTermInDB(LOCAL_ActiveError->culprit,false); */

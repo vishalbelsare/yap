@@ -14,6 +14,7 @@
  * comments:	Prolog's parser						 *
  *									 *
  *************************************************************************/
+
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
@@ -22,7 +23,7 @@ static char SccsId[] = "%W% %G%";
  * @file parser.c
  *
  * @addtogroup Parser Parser Implementation
- * @ingroup Implementation
+ * @ingroup YAPImplementation
  *
  * @{
  *
@@ -122,7 +123,7 @@ static void syntax_msg(const char *msg, ...) {
 
 #define FAIL siglongjmp(FailBuff->JmpBuff, 1)
 
-VarEntry *Yap_LookupVar(const char *var) /* lookup variable in variables table
+VarEntry *Yap_LookupVar(const char *var, int lineno, int linepos) /* lookup variable in variables table
                                           * */
 {
   CACHE_REGS
@@ -177,6 +178,16 @@ VarEntry *Yap_LookupVar(const char *var) /* lookup variable in variables table
     p->hv = 1L;
     p->VarRep = vat;
   }
+  p->lineno = lineno;
+  p->linepos = linepos;
+  p->VarAdr = TermNil;
+    p->VarNext = NULL;
+    if (LOCAL_VarList) {
+        LOCAL_VarTail->VarNext = p;
+    } else {
+    p->lineno = lineno;
+    p->linepos = linepos;
+  }
   p->VarAdr = TermNil;
     p->VarNext = NULL;
     if (LOCAL_VarList) {
@@ -224,23 +235,21 @@ Term Yap_VarNames(VarEntry *p, Term l) {
   return VarNames(p, l PASS_REGS);
 }
 
-static Term Singletons(VarEntry *p, Term l USES_REGS) {
-    Term hd = l, tl = l;
+static Term Singletons(VarEntry *p, bool var_only, Term l USES_REGS) {
   while (p != NULL) {
       if (RepAtom(p->VarRep)->StrOfAE[0] != '_' && p->refs == 1) {
           Term t[2];
           Term o;
 
-          t[0] = MkAtomTerm(p->VarRep);
+	  if (var_only) {
+	    t[0] = MkAtomTerm(p->VarRep);
+	  } else {
+          t[0] = MkPairTerm(MkAtomTerm(p->VarRep),MkPairTerm(MkIntTerm(p->lineno),MkPairTerm(MkIntTerm(p->linepos ),
+											     MkPairTerm(MkAtomTerm(LOCAL_SourceFileName),TermNil))));
+	  }
           t[1] = p->VarAdr;
           o = Yap_MkApplTerm(FunctorEq, 2, t);
-          o = MkPairTerm(o, l);
-          if (hd == l) {
-              hd = tl = o;
-          } else {
-              RepPair(tl)[1] = o;
-              tl = o;
-          }
+	  l = MkPairTerm(o,l);
           if (HR > ASP - 4096) {
               save_machine_regs();
               longjmp(LOCAL_IOBotch, 1);
@@ -248,12 +257,12 @@ static Term Singletons(VarEntry *p, Term l USES_REGS) {
       }
           p = p->VarNext;
   }
-    return (hd);
+    return l;
 }
 
-Term Yap_Singletons(VarEntry *p, Term l) {
+Term Yap_Singletons(VarEntry *p, bool vars_only, Term l) {
   CACHE_REGS
-  return Singletons(p, l PASS_REGS);
+    return Singletons(p, vars_only, l PASS_REGS);
 }
 
 static Term Variables(VarEntry *p, Term l USES_REGS) {
@@ -281,7 +290,7 @@ static Term Variables(VarEntry *p, Term l USES_REGS) {
 Term Yap_Variables(VarEntry *p, Term l) {
   CACHE_REGS
   l = Variables(p, l PASS_REGS);
-  return Variables(p, l PASS_REGS);
+  return l;
 }
 
 static int IsPrefixOp(Atom op, int *pptr, int *rpptr, Term cmod USES_REGS) {
@@ -376,11 +385,13 @@ int Yap_IsPosfixOp(Atom op, int *pptr, int *lpptr) {
 }
 
 inline static void GNextToken(USES_REGS1) {
+  bool tide = LOCAL_tokptr == LOCAL_toktide;
+  
   if (LOCAL_tokptr->Tok == Ord(eot_tok)) {
     LOCAL_ErrorMessage = NULL;
     return;
   }
-  if (LOCAL_tokptr == LOCAL_toktide) {
+  if (tide) {
     LOCAL_toktide = LOCAL_tokptr = LOCAL_tokptr->TokNext;
   } else
     LOCAL_tokptr = LOCAL_tokptr->TokNext;
@@ -688,6 +699,10 @@ static Term ParseTerm(int prio, JMPBUFF *FailBuff, encoding_t enc,
     NextToken;
     break;
 
+  case Comment_tok:
+    NextToken;
+    break;
+    
   case Var_tok:
     varinfo = (VarEntry *)(LOCAL_tokptr->TokInfo);
     if ((t = varinfo->VarAdr) == TermNil) {
@@ -931,9 +946,12 @@ static Term ParseTerm(int prio, JMPBUFF *FailBuff, encoding_t enc,
                  IsPosfixOp(AtomEmptySquareBrackets, &opprio, &oplprio,
                             cmod PASS_REGS) &&
                  opprio <= prio && oplprio >= curprio) {
-        t = ParseArgs(AtomEmptySquareBrackets, TermEndSquareBracket, FailBuff,
-                      t, enc, cmod PASS_REGS);
-        t = MakeAccessor(t, FunctorEmptySquareBrackets PASS_REGS);
+        Term tl[2];
+      NextToken;
+      tl[0] =ParseList(FailBuff, enc, cmod PASS_REGS);
+	  tl[1] = t;					    
+      checkfor(TermEndSquareBracket, FailBuff, enc PASS_REGS);
+      t = Yap_MkApplTerm(FunctorEmptySquareBrackets,2,tl);
         curprio = opprio;
         continue;
       } else if (LOCAL_tokptr->TokInfo == TermBeginCurlyBracket &&
@@ -963,7 +981,11 @@ Term Yap_Parse(UInt prio, encoding_t enc, Term cmod) {
     LOCAL_ActiveError->errorMsg=NULL;
     LOCAL_ActiveError->errorMsgLen=0;
   Volatile Term t = 0;
-  JMPBUFF FailBuff;
+JMPBUFF FailBuff;
+  sigjmp_buf *sigold = LOCAL_RestartEnv;
+  if (!sigold)
+    LOCAL_TopRestartEnv = &(FailBuff.JmpBuff);
+  LOCAL_RestartEnv = &FailBuff.JmpBuff;
   yhandle_t sls = Yap_StartSlots();
   LOCAL_ErrorMessage = NULL;
   LOCAL_toktide = LOCAL_tokptr;
@@ -971,8 +993,8 @@ Term Yap_Parse(UInt prio, encoding_t enc, Term cmod) {
   if (!sigsetjmp(FailBuff.JmpBuff, 0)) {
     LOCAL_ActiveError->errorMsg=NULL;
     LOCAL_ActiveError->errorMsgLen=0;
-                                                  LOCAL_ParserAuxSp = LOCAL_ParserAuxBase = Malloc(4096*sizeof(CELL));
-                                                  LOCAL_ParserAuxMax =   LOCAL_ParserAuxBase+4096;
+    LOCAL_ParserAuxSp = LOCAL_ParserAuxBase = Malloc(4096*sizeof(CELL));
+    LOCAL_ParserAuxMax =   LOCAL_ParserAuxBase+4096;
     t = ParseTerm(prio, &FailBuff, enc, cmod PASS_REGS);
 #if DEBUG
     if (GLOBAL_Option['p' - 'a' + 1]) {
@@ -994,18 +1016,20 @@ Term Yap_Parse(UInt prio, encoding_t enc, Term cmod) {
 #endif
     Yap_CloseSlots(sls);
   }
-  if ((LOCAL_tokptr == NULL || LOCAL_tokptr->Tok == Ord(eot_tok)) &&
+    LOCAL_RestartEnv = sigold;
+  if ((LOCAL_tokptr == NULL || LOCAL_tokptr->TokInfo == TermEof ||LOCAL_tokptr->Tok == Ord(eot_tok)) &&
        t != 0) {
     LOCAL_Error_TYPE = YAP_NO_ERROR;
     LOCAL_ErrorMessage = NULL;
     return t;
     
       }
+  if (LOCAL_Error_TYPE == YAP_NO_ERROR) {
     LOCAL_Error_TYPE =SYNTAX_ERROR; 
       size_t sz = strlen("bracket or operator expected.");
       LOCAL_ErrorMessage =malloc(sz+1);
       strncpy(LOCAL_ErrorMessage, "bracket or operator expected.", sz  );
-  
+  }
    return (0L);
 }
 

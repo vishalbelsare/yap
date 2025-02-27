@@ -23,6 +23,7 @@
  * @addtogroup ChYInterface
  */
 
+
 #ifndef C_INTERFACE_C
 
 #define C_INTERFACE_C 1
@@ -143,16 +144,16 @@ the implementation section.
 /// @brief initialize the slot data-structure: all existing slots will be
 /// discarded. Typically, this would be used at the beginning
 /// top-level or other outer quqqery.
-X_API void YAP_StartSlots(void) {
+X_API int YAP_StartSlots(void) {
   CACHE_REGS
-   Yap_RebootHandles(worker_id);
+   return Yap_StartHandles();
 }
 
 /// @brief discard all existing slots: operates as
 /// StartSlots, but should be called when we're done.
-X_API void YAP_EndSlots(void) {
+X_API void YAP_EndSlots(int slot) {
     CACHE_REGS
-  Yap_RebootHandles(worker_id); }
+      Yap_CloseHandles( slot); }
 
 /// @brief report the current position of the slots, assuming that they occupy
 /// the top of the stack.
@@ -222,7 +223,7 @@ static int doexpand(UInt sz) {
   CACHE_REGS
 
   gc_entry_info_t info;
-  Yap_track_cpred(0, P, 0, &info);
+  Yap_track_cpred( 0, P, 0, &info);
   if (!Yap_gc(&info)) {
     return FALSE;
   }
@@ -1131,7 +1132,7 @@ X_API Int YAP_Execute(PredEntry *pe, CPredicate exec_code) {
   // if (pe->PredFlags & CArgsPredFlag) {
   //  CurrentModule = pe->ModuleOfPred;
   //}
-  int lvl = push_text_stack();
+  //int lvl = push_text_stack();
   yhandle_t hdl = Yap_CurrentHandle();
   if (pe->PredFlags & SWIEnvPredFlag) {
     CPredicateV codev = (CPredicateV)exec_code;
@@ -1156,7 +1157,7 @@ X_API Int YAP_Execute(PredEntry *pe, CPredicate exec_code) {
     complete_fail(((choiceptr)(LCL0 - OASP)), FALSE PASS_REGS);
   }
   Yap_RecoverHandles(0, hdl);
-  pop_text_stack(lvl);
+  //pop_text_stack(lvl);
   // CurrentModule = omod;
   RECOVER_MACHINE_REGS();
   if (!ret) {
@@ -1791,7 +1792,8 @@ X_API bool YAP_RetryGoal(YAP_dogoalinfo *dgi) {
     else if (B->cp_ap == FAILCODE)
       B = B->cp_b;
     else {
-      if (B->cp_ap == NOCODE)
+    if (B->cp_ap == NOCODE ||
+	B->cp_ap == EXITCODE)
         B = B->cp_b;
       break;
     }
@@ -1933,6 +1935,10 @@ X_API Term YAP_NewOpaqueObject(YAP_opaque_tag_t blob_tag, size_t cells) {
   return t;
 }
 
+X_API YAP_Bool YAP_IsBlobTerm(Term t) {
+  return IsBlobTerm(t);
+}
+
 X_API YAP_Bool YAP_IsOpaqueObjectTerm(Term t, YAP_opaque_tag_t tag) {
   return IsExternalBlobTerm(t, (CELL)tag);
 }
@@ -1945,6 +1951,12 @@ X_API CELL *YAP_HeapStoreOpaqueTerm(Term t) {
 
 X_API Int YAP_RunGoalOnce(Term t) {
   CACHE_REGS
+    if (IsPairTerm(t)) {
+     Term ts[2];
+    ts[0] = t;
+    ts[1] = (CurrentModule == 0 ? TermProlog : CurrentModule);
+    t  = Yap_MkApplTerm(FunctorCsult, 2, ts);
+    }
   bool rc = Yap_exists(t, false PASS_REGS);
     if (Yap_RaiseException())
         return
@@ -1981,7 +1993,7 @@ X_API bool YAP_ShutdownGoal(int backtrack) {
     choiceptr cut_pt;
 
     cut_pt = B;
-    while (cut_pt->cp_ap != NOCODE) {
+    while (cut_pt->cp_ap != EXITCODE) {
       /* make sure we prune C-choicepoints */
       if (POP_CHOICE_POINT(cut_pt->cp_b)) {
         POP_EXECUTE();
@@ -2054,9 +2066,7 @@ X_API bool YAP_GoalHasException(Term *t) {
 }
 
 X_API void YAP_ClearExceptions(void) {
-  CACHE_REGS
-
-  Yap_ResetException(worker_id);
+  Yap_ResetException(NULL);
 }
 
 X_API int YAP_InitConsult(int mode, const char *fname, char *full, int *osnop, char *dir) {
@@ -2082,16 +2092,16 @@ X_API int YAP_InitConsult(int mode, const char *fname, char *full, int *osnop, c
     pop_text_stack(lvl);
     return -1;
   }
-  __android_log_print(ANDROID_LOG_INFO, "YAPDroid", "done init_ consult %s ",
-                      fl);
   char *d = Malloc(strlen(fl) + 1);
   strcpy(d, fl);
+  __android_log_print(ANDROID_LOG_INFO, "YAPDroid", "done init_ consult %s ",
+                      fl);
   bool consulted = (mode == YAP_CONSULT_MODE);
   Term tat = MkAtomTerm(Yap_LookupAtom(fl));
   sno = Yap_OpenStream(tat, "r", MkAtomTerm(Yap_LookupAtom(fname)),
                        LOCAL_encoding);
   __android_log_print(ANDROID_LOG_INFO, "YAPDroid", "OpenStream got %d ", sno);
-  if (sno < 0 || !Yap_ChDir(dirname((char *)d))) {
+  if (sno < 0) {
     if (full)
       full[0] = '\0';
     pop_text_stack(lvl);
@@ -2099,9 +2109,8 @@ X_API int YAP_InitConsult(int mode, const char *fname, char *full, int *osnop, c
   }
   LOCAL_PrologMode = UserMode;
   strcpy(full, fl);
-  Yap_init_consult(consulted, full);
+  Yap_init_consult(consulted, full, d);
   RECOVER_MACHINE_REGS();
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   pop_text_stack(lvl);
   return sno;
 }
@@ -2166,7 +2175,7 @@ X_API Term YAP_ReadFromStream(int sno) {
       cause = MkAtomTerm(Yap_LookupAtom("  "));
     }
     RECOVER_MACHINE_REGS();
-    Yap_syntax_error(cause, -1, NULL, NULL, cause, "while parsing atom");
+    Yap_syntax_error( cause, -1, NULL, NULL, "while parsing atom");
     return 0;
   } else {
     o = Yap_read_term(sno, TermNil, false);
@@ -2193,12 +2202,8 @@ X_API void YAP_Write(Term t, FILE *f, int flags) {
     CACHE_REGS
   BACKUP_MACHINE_REGS();
   int sno = Yap_FileStream(f, NULL, TermNil, Output_Stream_f, NULL);
-  int depths[3];
-  depths[0] = LOCAL_max_depth;
-  depths[1] = LOCAL_max_list;
-  depths[2] = LOCAL_max_args;
 
-  Yap_plwrite(t, GLOBAL_Stream + sno, depths, HR,0, flags, NULL);
+  Yap_plwrite(t, GLOBAL_Stream + sno, HR,0, flags, NULL);
   Yap_CloseStream(sno);
 
   RECOVER_MACHINE_REGS();
@@ -2260,43 +2265,9 @@ X_API char *YAP_WriteDynamicBuffer(YAP_Term t, encoding_t enc, int flags) {
 
 X_API bool YAP_CompileClause(Term t) {
   CACHE_REGS
-  yamop *codeaddr;
-  Term mod = CurrentModule;
-  Term tn = TermNil;
-  bool ok = true;
 
-  BACKUP_MACHINE_REGS();
-
-  /* allow expansion during stack initialization */
-  LOCAL_ErrorMessage = NULL;
-  ARG1 = t;
-  YAPEnterCriticalSection();
-    gc_entry_info_t info;
-    Yap_track_cpred( 0, P, 0,   &info);
-    codeaddr = Yap_cclause(t, 0, mod, MkIntTerm(0), t, &info);
-  ok = (codeaddr != NULL);
-  if (ok) {
-    t = Deref(ARG1); /* just in case there was an heap overflow */
-    if (!Yap_addclause(t, codeaddr, TermAssertz, mod, &tn)) {
-      ok = false;
-    }
-  } else {
-    ok = false;
-  }
-  YAPLeaveCriticalSection();
-
-  if (Yap_get_signal(YAP_CDOVF_SIGNAL)) {
-    if (!Yap_locked_growheap(FALSE, 0, NULL)) {
-      Yap_Error(RESOURCE_ERROR_HEAP, TermNil, "YAP failed to grow heap: %s",
-                LOCAL_ErrorMessage);
-      ok = false;
-    }
-  }
-  RECOVER_MACHINE_REGS();
-  if (!ok) {
-    return NULL;
-  }
-  return ok;
+    return
+    Yap_Compile(t, TermConsult, t, CurrentModule, MkIntTerm(0), TermNil PASS_REGS);
 }
 
 X_API void YAP_PutValue(YAP_Atom at, Term t) { Yap_PutValue(at, t); }
@@ -2725,7 +2696,7 @@ X_API void *YAP_Record(Term t) {
   DBTerm *dbterm;
   DBRecordList *dbt;
 
-  dbterm = Yap_StoreTermInDB(Deref(t), 0);
+  dbterm = Yap_StoreTermInDB(Deref(t));
   if (dbterm == NULL)
     return NULL;
   dbt = (struct record_list *)Yap_AllocCodeSpace(sizeof(struct record_list));
@@ -3095,12 +3066,15 @@ X_API int YAP_RequiresExtraStack(size_t sz) {
   return TRUE;
 }
 
-atom_t *TR_Atoms;
-functor_t *TR_Functors;
-size_t AtomTranslations, MaxAtomTranslations;
-size_t FunctorTranslations, MaxFunctorTranslations;
+atom_t *TR_Atoms = NULL;
+functor_t *TR_Functors = NULL;
+size_t AtomTranslations = 0, MaxAtomTranslations = 1024;
+size_t FunctorTranslations = 0, MaxFunctorTranslations = 1024;
 
 X_API Int YAP_AtomToInt(YAP_Atom At) {
+  if (!TR_Atoms) {
+    TR_Atoms = Yap_AllocAtomSpace(sizeof(atom_t)*MaxAtomTranslations);
+  }
   TranslationEntry *te = Yap_GetTranslationProp(At, 0);
   if (te != NIL)
     return te->Translation;
@@ -3108,24 +3082,21 @@ X_API Int YAP_AtomToInt(YAP_Atom At) {
   Yap_PutAtomTranslation(At, 0, AtomTranslations);
   AtomTranslations++;
   if (AtomTranslations == MaxAtomTranslations) {
-    atom_t *ot = TR_Atoms;
-    atom_t *nt = (atom_t *)malloc(sizeof(atom_t) * 2 * MaxAtomTranslations);
-    if (nt == NULL) {
+    TR_Atoms = realloc(TR_Atoms,sizeof(atom_t) * 2 * MaxAtomTranslations);
+    if (TR_Atoms == NULL) {
       Yap_Error(SYSTEM_ERROR_INTERNAL, MkAtomTerm(At),
                 "No more room for translations");
       return -1;
     }
-    memmove(nt, ot, sizeof(atom_t) * MaxAtomTranslations);
-    TR_Atoms = nt;
-    free(ot);
     MaxAtomTranslations *= 2;
   }
   return AtomTranslations - 1;
 }
 
-X_API YAP_Atom YAP_IntToAtom(Int i) { return TR_Atoms[i]; }
-
 X_API Int YAP_FunctorToInt(YAP_Functor f) {
+  if (!TR_Functors) {
+    TR_Functors = Yap_AllocAtomSpace(sizeof(functor_t)*MaxFunctorTranslations);
+  }
   YAP_Atom At = NameOfFunctor(f);
   arity_t arity = ArityOfFunctor(f);
   TranslationEntry *te = Yap_GetTranslationProp(At, arity);
@@ -3135,17 +3106,13 @@ X_API Int YAP_FunctorToInt(YAP_Functor f) {
   Yap_PutAtomTranslation(At, arity, FunctorTranslations);
   FunctorTranslations++;
   if (FunctorTranslations == MaxFunctorTranslations) {
-    functor_t *nt = (functor_t *)malloc(sizeof(functor_t) * 2 *
-                                        MaxFunctorTranslations),
-              *ot = TR_Functors;
-    if (nt == NULL) {
+    TR_Functors = realloc(TR_Functors,sizeof(functor_t) * 2 *
+                                        MaxFunctorTranslations);
+    if (TR_Functors == NULL) {
       Yap_Error(SYSTEM_ERROR_INTERNAL, MkAtomTerm(At),
                 "No more room for translations");
       return -1;
     }
-    memmove(nt, ot, sizeof(functor_t) * MaxFunctorTranslations);
-    TR_Functors = nt;
-    free(ot);
     MaxFunctorTranslations *= 2;
   }
   return FunctorTranslations - 1;

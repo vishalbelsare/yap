@@ -62,7 +62,8 @@ typedef struct array_access_struct {
   Term	ArrayT;				/* term that references the array */
   Term  indx;				/* index in array, for now
 				   keep it as an integer! */
-} array_access;
+  int base;
+  } array_access;
 
 typedef enum {
   STATIC_ARRAY = 1,
@@ -72,20 +73,6 @@ typedef enum {
 } array_type;
 
 
-/* next, the actual data structure */
-typedef struct static_array_entry {
-  Prop NextOfPE;      /* used to chain properties             */
-  PropFlags KindOfPE; /* kind of property                     */
-  Int ArrayEArity;    /* Arity of Array (negative)            */
-  array_type TypeOfAE;
-#if defined(YAPOR) || defined(THREADS)
-  rwlock_t ArRWLock; /* a read-write lock to protect the entry */
-#endif
-  struct static_array_entry *NextAE;
-  static_array_types ArrayType; /* Type of Array Elements.              */
-  statarray_elements ValueOfVE; /* Pointer to the Array itself  */
-} StaticArrayEntry;
-
 
 /*		array property entry structure				*/
 /*		first case is for dynamic arrays */
@@ -94,6 +81,9 @@ typedef struct array_entry {
   PropFlags KindOfPE; /* kind of property                     */
   Int ArrayEArity;    /* Arity of Array (positive)            */
   array_type TypeOfAE;
+  size_t NDimsOfAE;
+  ssize_t *DimsOfAE;
+  int BaseOfAE;
 #if defined(YAPOR) || defined(THREADS)
   rwlock_t ArRWLock; /* a read-write lock to protect the entry */
 #if THREADS
@@ -101,14 +91,19 @@ typedef struct array_entry {
 #endif
 #endif
   struct array_entry *NextAE;
-  Term ValueOfVE; /* Pointer to the actual array          */
+ union {
+   Term ValueOfDynamicVE; /* Pointer to the actual array          */
+   struct {
+     static_array_types ArrayType; /* Type of Array Elements.              */
+     statarray_elements ValueOfStaticVE; /* Pointer to the Array itself  */
+   };
+ };   
 } ArrayEntry;
 
 
-struct static_array_entry *
+extern struct array_entry *
 Yap_StaticVector( Atom Name, size_t size,  static_array_types props );
 
-struct static_array_entry *
-Yap_StaticArray(Atom na, size_t dim, static_array_types type, CODEADDR start_addr, struct static_array_entry *p);
+extern ArrayEntry *Yap_StaticArray(Atom na, static_array_types type, size_t sz, size_t ndims, size_t *dims, CODEADDR start_addr, ArrayEntry *p);
 
 #endif

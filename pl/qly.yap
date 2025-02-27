@@ -15,15 +15,19 @@
 *									 *
 *************************************************************************/
 
-%% @file qly.yap
+/**
+ @file qly.yap
+*/
 
 /**
+
 @defgroup QLY Creating and Using a saved state
 @ingroup YAPConsulting
 @{
+
 */
 
-:- system_module( '$_qly', [qload_module/1,
+:- system_module_( '$_qly', [qload_module/1,
         qsave_file/1,
         qsave_module/1,
         qsave_program/1,
@@ -62,6 +66,8 @@ first. If it cannot it will use the environment variable [YAPLIBDIR](@ref YAPLIB
 defined, or search the default library directory.
 
 */
+
+:- dynamic '$file_property'/1.
 
 /** @pred save_program(+ _F_)
 Saves the current state of the data-base in file _F_ .
@@ -133,9 +139,8 @@ qend_program :-
 	module(user),
 	qsave_program('startup.yss'),
 	halt(0).
-
 '$save_program_status'(Flags, G) :-
-    findall(F-V, '$x_yap_flag'(F,V),L),
+    findall(F-V, '$x_current_prolog_flag'(F,V),L),
     recordz('$program_state',L,_),
   '$cvt_qsave_flags'(Flags, G),
     fail.
@@ -144,7 +149,7 @@ qend_program :-
 '$cvt_qsave_flags'(Flags, G) :-
     nonvar(Flags),
     strip_module(Flags, M, LFlags),
-    '$skip_list'(_Len, LFlags, []),
+    skip_list(_Len, LFlags, []),
     '$cvt_qsave_lflags'(LFlags, G, M).
 '$cvt_qsave_flags'(Flags, G,_OFlags) :-
     var(Flags),
@@ -227,12 +232,12 @@ qend_program :-
     throw_error(domain_error(qsave_program,Opt), G).
 
 % there is some ordering between flags.
-'$x_yap_flag'(language, V) :-
-	yap_flag(language, V).
-'$x_yap_flag'(M:P, V) :-
+'$x_sprolog_flag'(language, V) :-
+	current_prolog_flag(language, V).
+'$x_current_prolog_flag'(M:P, V) :-
 	current_module(M),
 	yap_flag(M:P, V).
-'$x_yap_flag'(X, V) :-
+'$x_current_prolog_flag'(X, V) :-
 	prolog_flag_property(X, [access(read_write)]),
 	atom(X),
 	X \= gc_margin, % different machines will have different needs,
@@ -244,7 +249,7 @@ qend_program :-
 	X \= user_output,
 	X \= user_error,
 	X \= verbose_load,
-	yap_flag(X, V),
+	current_prolog_flag(X, V),
 	fail.
 
 qsave_file(F0) :-
@@ -295,7 +300,7 @@ qsave_file(F0, State) :-
         '$qsave_file_preds'(S, File),
         close(S)
     ),
-    abolish(user:'$file_property'/1).
+    retractall(user:'$file_property'(_)).
 
 '$fetch_multi_files_file'(File, Multi_Files) :-
 	setof(Info, '$fetch_multi_file_module'(File, Info), Multi_Files).
@@ -452,7 +457,8 @@ qload_module(Mod) :-
 
 % detect an multi_file that is local to the module.
 '$fetch_multi_file_module'(Mod, '$defined'(Name,Arity,Mod)) :-
-    '$current_predicate'(Name,Mod,Goal,_),
+    module_predicate(Mod,Name,Ar,_),
+    functor(Goal,Name,Ar),
     '$is_multifile'(Goal,Mod),
     functor(Goal,Name,Arity).
 
@@ -623,16 +629,17 @@ qload_file( F0 ) :-
     fail.
 '$ql_process_directives'( _FilePl ) :-
     user:'$file_property'( multifile( List ) ),
-    '$member'( Clause, List ),
+    member( Clause, List ),
     assert( Clause ),
     fail.
 '$ql_process_directives'( FilePl ) :-
     user:'$file_property'( directive( MG, _Mode,  VL, Pos  ) ),
     '$set_source'( FilePl, Pos ),
+    must_be_callable(MG),
     '$yap_strip_module'(MG, M, G),
     '$process_directive'(G, reconsult, M, VL, Pos),
     fail.
 '$ql_process_directives'( _FilePl ) :-
-    abolish(user:'$file_property'/1).
+    retractall(user:'$file_property'(_)).
 
 %% @}

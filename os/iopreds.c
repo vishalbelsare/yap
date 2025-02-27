@@ -14,12 +14,12 @@
  * comments:	Input/Output C implemented predicates			 *
  *									 *
  *************************************************************************/
+
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
 
-/**260-1A
- A
+/**
  * @file   iopreds.c
  * @author VITOR SANTOS COSTA <vsc@VITORs-MBP.lan>
  * @date   Wed Jan 20 00:45:56 2016
@@ -29,10 +29,21 @@ static char SccsId[] = "%W% %G%";
  */
 /*
  * This file includes the definition of a miscellania of standard predicates *
- *for yap refering to: Files and GLOBAL_1588
- *451ams, Simple Input/Output,
- *Rua do Orfeão do Po
+ *for yap refering to Input/Output.
  */
+
+/** 
+ * @defgroup StreamOps Stream Operations
+    @ingroup InputOutput
+    @brief Main operations on streams.
+@{
+    YAP uses streams to perform Input/Output. Streams are
+    non-backtrackable objects loosely based on the Unix library IO
+    primitives. They must be open, their properties can be queried or
+    modified, and ultimately they need to be closed.
+
+
+*/
 
 #include "Yap.h"
 #include "YapEval.h"
@@ -156,60 +167,31 @@ char *Yap_VFAlloc(const char *path) {
 }
 
 
-int ResetEOF(StreamDesc *s) {
-  if (s->status & Eof_Error_Stream_f) {
-    Atom name = s->name;
-    // Yap_CloseStream(s - GLOBAL_Stream);
-    Yap_ThrowError(PERMISSION_ERROR_INPUT_PAST_END_OF_STREAM, MkAtomTerm(name),
-              "GetC");
-    return FALSE;
-  } else if (s->status & Reset_Eof_Stream_f) {
-    s->status &= ~Push_Eof_Stream_f;
-    /* reset the eof indicator on file */
-    if (feof(s->file))
-      clearerr(s->file);
-    /* reset our function for reading input */
-    Yap_DefaultStreamOps(s);
-    /* next, reset our own error indicator */
-    s->status &= ~Eof_Stream_f;
-    /* try reading again */
-    return TRUE;
-  } else {
+/* check if we read a LOCAL_newline or an EOF */
+static int past_eof(StreamDesc *s) {
     s->status |= Past_Eof_Stream_f;
-    return FALSE;
-  }
-}
 
-/* handle reading from a stream after having found an EOF */
+    if (s->status & Repeat_Eof_Stream_f) {
+      return EOF;
+    } else {
+      Atom name = (Atom)s->name;
+      //    Yap_CloseStream(s - GLOBAL_Stream);
+      Yap_ThrowError(PERMISSION_ERROR_INPUT_PAST_END_OF_STREAM, MkAtomTerm(name),
+		     "GetC");
+      return EOF;
+    }
+    return EOF;
+ }
+
+/* handle reading from a stream after having found an EO*/
 static int EOFWGetc(int sno) {
   register StreamDesc *s = &GLOBAL_Stream[sno];
-
-  if (s->status & Push_Eof_Stream_f) {
-    /* ok, we have pushed an EOF, send it away */
-    s->status &= ~Push_Eof_Stream_f;
-    return EOF;
-  }
-  if (ResetEOF(s)) {
-    Yap_DefaultStreamOps(s);
-    return (s->stream_wgetc(sno));
-  }
-  return EOF;
+  return past_eof(s);
 }
 
 static int EOFGetc(int sno) {
   register StreamDesc *s = &GLOBAL_Stream[sno];
-
-  if (s->status & Push_Eof_Stream_f) {
-    /* ok, we have pushed an EOF, send it away */
-    s->status &= ~Push_Eof_Stream_f;
-    ResetEOF(s);
-    return EOF;
-  }
-  if (ResetEOF(s)) {
-    Yap_DefaultStreamOps(s);
-    return s->stream_getc(sno);
-  }
-  return EOF;
+  return past_eof(s);
 }
 
 void Yap_stream_id(StreamDesc *s, Term user_name, Atom system_name) {
@@ -308,12 +290,13 @@ void Yap_stream_id(StreamDesc *s, Term user_name, Atom system_name) {
     
 }
 
-static void default_peek(StreamDesc *st) {
+void Yap_default_peek(StreamDesc *st)
   {
     st->stream_peek = Yap_peekChar;
     st->stream_wpeek = Yap_peekWide;
-  }
-  if (st->status & Eof_Stream_f) {
+  
+  if (st->status & Past_Eof_Stream_f ||
+      (st-> file && feof(st->file))) {
     st->stream_peek = EOFPeek;
     st->stream_wpeek = EOFPeek;
     st->stream_getc = EOFGetc;
@@ -336,56 +319,133 @@ static int NullPutc(int sno, int ch) {
   count_output_char(ch, s);
   return ((int)ch);
 }
+
+
+void Yap_EOF_Stream(StreamDesc *st)
+{
+   if (st->status & Reset_Eof_Stream_f) {
+    st->status &= ~Push_Eof_Stream_f;
+    /* reset the eof indicator on file */
+    if (feof(st->file))
+      clearerr(st->file);
+    /* reset our function for reading input */
+    st->status &= ~Past_Eof_Stream_f;
+    return;
+   }
+  st->status |=Past_Eof_Stream_f;
+    st->stream_peek = EOFPeek;
+    st->stream_wpeek = EOFPeek;
+    st->stream_getc = EOFGetc;
+    st->stream_wgetc = EOFWGetc;
+}
+
+int post_process_eof(StreamDesc *s) {
+Yap_EOF_Stream(s);
+return EOF;
+}
+
+int post_process_read_wchar(int ch, size_t n, StreamDesc *s) {
+  if (ch == EOF) {
+    Yap_EOF_Stream(s);
+    return EOF;
+  }
+#if DEBUG
+  if (GLOBAL_Option[1]) {
+    static int v;
+    fprintf(stderr, "%d %C\n", v, ch);
+    v++;
+  }
+#endif
+  s->charcount += n;
+  if (ch == '\n') {
+    ++s->linecount;
+    s->linestart = s->charcount;
+    /* don't convert if the stream is binary */
+    if (!(s->status & Binary_Stream_f))
+      ch = 10;
+  }
+  return ch;
+}
+
+
+int post_process_read_char(int ch, StreamDesc *s) {
+  if (ch == EOF) {
+    Yap_EOF_Stream(s);
+    return EOF;
+  }
+
+#if DEBUG
+  if (GLOBAL_Option[1]) {
+    static int v;
+    fprintf(stderr, "%d %C\n", v, ch);
+    v++;
+  }
+#endif
+  s->charcount ++;
+  if (ch == '\n') {
+    ++s->linecount;
+    s->linestart = s->charcount;
+    /* don't convert if the stream is binary */
+    if (!(s->status & Binary_Stream_f))
+      ch = 10;
+  }
+  return ch;
+}
+
+
 void Yap_DefaultStreamOps(StreamDesc *st) {
-  st->stream_wputc = put_wchar;
-  st->stream_wgetc = get_wchar;
   if (st->vfs && !st->file) {
     st->stream_putc = st->vfs->put_char;
     st->stream_wputc = st->vfs->put_wchar;
     st->stream_getc = st->vfs->get_char;
     st->stream_wgetc = st->vfs->get_wchar;
-    default_peek(st);
+    Yap_default_peek(st);
     return;
-  } else {
-    if (st->encoding == ENC_ISO_UTF8)
-      st->stream_wgetc = get_wchar_UTF8;
-    st->stream_putc = FilePutc;
-    st->stream_getc = PlGetc;
-    if (st->status & Pipe_Stream_f) {
+  }
+  st->stream_wputc = put_wchar;
+  st->stream_wgetc_for_read = st->stream_wgetc = get_wchar;
+  Yap_default_peek(st);
+
+  if (st->encoding == ENC_ISO_UTF8) {
+    st->stream_wgetc_for_read = get_wchar_UTF8;
+  }
+  
+  if (st->status & Tty_Stream_f && st-GLOBAL_Stream <3) {
+      st->stream_putc =ConsolePutc;
+    if (st->status & Readline_Stream_f) {
+      st->stream_getc =ReadlineGetc  ;
+          st->stream_peek = Yap_ReadlinePeekChar;
+    st->stream_wpeek = Yap_ReadlinePeekChar;
+    } else {
+      st->stream_getc =ConsoleGetc;
+    }
+      st->stream_getc =ReadlineGetc  ;
+  } else if (st->status & Null_Stream_f) {
+    st->stream_putc = NullPutc;
+  } else if (st->status & Pipe_Stream_f) {
       Yap_PipeOps(st);
     } else if (st->status & InMemory_Stream_f) {
       Yap_MemOps(st);
 #if HAVE_SETBUF
             setbuf(stdin, NULL);
 #endif /* HAVE_SETBUF */
-    } else if (st->status & Tty_Stream_f) {
-      Yap_ConsoleOps(st);
-    } else {
-    }
-    if (st->status & (Promptable_Stream_f)) {
-      Yap_ConsoleOps(st);
-    }
+  } else if (st->status & Null_Stream_f) {
+  st->stream_putc = NullPutc;
+  st->stream_getc = PlGetc;
+} else {
+    st->stream_putc = FilePutc;
+    st->stream_getc = PlGetc;
+  }
 #ifndef _WIN32
-    else if (st->file != NULL && 0 && !(st->status & InMemory_Stream_f)) {
+     if (st->file != NULL && 0 && !(st->status & InMemory_Stream_f)) {
       st->stream_wgetc = get_wchar_from_file;
     }
 #endif
-    if (st->buf.on) {
-      st->stream_getc = Yap_popChar;
-      st->stream_wgetc = Yap_popWide;
-    }
-  }
-#if USE_READLINE
+ #if USE_READLINE
   if (st->status & Readline_Stream_f) {
-    st->stream_peek = Yap_ReadlinePeekChar;
-    st->stream_wpeek = Yap_ReadlinePeekChar;
-  }  else if (st->status & Null_Stream_f) {
-  st->stream_putc = NullPutc;
-  st->stream_wputc = put_wchar;
-  st->stream_getc = PlGetc;
-  st->stream_wgetc = get_wchar;
-  st->stream_wgetc_for_read = get_wchar;
   }
+  #endif
+
   /* else {
      st->stream_peek = Yap_peekWithGetc;
      st->stream_wpeek = Yap_peekWideWithGetwc;
@@ -394,10 +454,9 @@ void Yap_DefaultStreamOps(StreamDesc *st) {
      st->stream_peek = Yap_peekWithSeek;
      st->stream_wpeek = Yap_peekWideWithSeek;
      } */
-  else
-#endif
-    default_peek(st);
+
 }
+
 
 static void InitStdStream(int sno, SMALLUNSGN flags, FILE *file, VFS_t *vfsp) {
   StreamDesc *s = &GLOBAL_Stream[sno];
@@ -430,6 +489,9 @@ static void InitStdStream(int sno, SMALLUNSGN flags, FILE *file, VFS_t *vfsp) {
     //    fprintf(stderr,"here I am\n");
   }
 #endif /* HAVE_SETBUF */
+  if (s->status & Tty_Stream_f) {
+    s->status |= Reset_Eof_Stream_f;
+  }
 }
 
 void Yap_InitStdStream(int sno, unsigned int flags, FILE *file, VFS_t *vfsp) {
@@ -634,21 +696,21 @@ void Yap_DebugErrorPuts(const char *s) { Yap_DebugPuts(stderr, s); }
 void Yap_DebugPlWrite(Term t) {
   CACHE_REGS
     
-  int depths[3];
-  if (t == 0)
+    if (t == 0) {
     fprintf(stderr, "NULL");
-  depths[0] = depths[1] = depths[2] = 10;
-  Yap_plwrite(t, GLOBAL_Stream + 2, depths, HR, 0,0, NULL);
+    return;
+    }
+  Yap_plwrite(t, GLOBAL_Stream + 2, HR, 0,0, NULL);
 }
 
 void
 Yap_DebugPlWriteln(Term t) {
   CACHE_REGS
-  if (t == 0)
+    if (t == 0) {
     fprintf(stderr, "NULL");
-     int depths[3];
-     depths[0] = depths[1] = depths[2] = 100;
-     Yap_plwrite(t, GLOBAL_Stream+LOCAL_c_error_stream , depths, HR, 0, Handle_cyclics_f|Quote_illegal_f, NULL);
+    return;
+    }
+Yap_plwrite(t, GLOBAL_Stream+LOCAL_c_error_stream, HR, 0,YAP_WRITE_QUOTED, NULL);
   Yap_DebugPutc(GLOBAL_Stream[LOCAL_c_error_stream].file, '.');
   Yap_DebugPutc(GLOBAL_Stream[LOCAL_c_error_stream].file, 10);
 }
@@ -718,52 +780,7 @@ int FilePutc(int sno, int ch) {
   return ((int)ch);
 }
 
-/* check if we read a LOCAL_newline or an EOF */
-int console_post_process_eof(StreamDesc *s) {
-  CACHE_REGS
-  if (!ResetEOF(s)) {
-    s->status |= Eof_Stream_f;
-    s->stream_getc = EOFGetc;
-    s->stream_wgetc = EOFWGetc;
-    s->stream_wgetc_for_read = EOFWGetc;
-    LOCAL_newline = true;
-  }
-  return EOFCHAR;
-}
-
-/* check if we read a newline or an EOF */
-int post_process_read_wchar(int ch, size_t n, StreamDesc *s) {
-  if (ch == EOF) {
-    return post_process_weof(s);
-  }
-#if DEBUG
-  if (GLOBAL_Option[1]) {
-    static int v;
-    fprintf(stderr, "%d %C\n", v, ch);
-    v++;
-  }
-#endif
-  s->charcount += n;
-  if (ch == '\n') {
-    ++s->linecount;
-    s->linestart = s->charcount;
-    /* don't convert if the stream is binary */
-    if (!(s->status & Binary_Stream_f))
-      ch = 10;
-  }
-  return ch;
-}
-
-int post_process_weof(StreamDesc *s) {
-  if (!ResetEOF(s)) {
-    s->status |= Eof_Stream_f;
-    s->stream_wgetc = EOFWGetc;
-    s->stream_getc = EOFGetc;
-    s->stream_wgetc_for_read = EOFWGetc;
-  }
-  return EOFCHAR;
-}
-
+ 
 void *Yap_RepStreamFromId(int sno) { return GLOBAL_Stream + (sno); }
 
 /**
@@ -1197,6 +1214,15 @@ bool Yap_initStream__(const char *f, const char *func, int line, int sno, FILE *
   if (strchr(io_mode, 'b')) {
     st->status = Binary_Stream_f | flags;
   }
+#if HAVE_STAT
+  int fd;
+  if (st->file && (fd=fileno(st->file))>=0) {
+      struct SYSTEM_STAT ss;
+      if (SYSTEM_FSTAT(fd, &ss) == 0 &&S_ISREG(ss.st_mode)) {
+      st->status |= Seekable_Stream_f;
+      }
+  }
+#endif
 
   // st->vfs = vfs;
   st->buf.on = false;
@@ -1350,11 +1376,9 @@ static bool fill_stream(int sno, StreamDesc *st, Term tin, const char *io_mode,
               // read, write, append
               user_name = st->user_name;
               st->vfs = vfsp;
-              UNLOCK(st->streamlock);
               __android_log_print(
                       ANDROID_LOG_INFO, "YAPDroid", "got  %d ", sno);
           } else {
-              UNLOCK(st->streamlock);
               __android_log_print(
                       ANDROID_LOG_INFO, "YAPDroid", "failed  %s ",fname);
 return false;
@@ -1364,7 +1388,6 @@ return false;
           if (st->file == NULL) {
                  __android_log_print(
                      ANDROID_LOG_INFO, "YAPDroid", "failed  %s ",fname);
-            UNLOCK(st->streamlock);
               if (errno == ENOENT && !strchr(io_mode, 'r')) {
                   PlIOError(EXISTENCE_ERROR_SOURCE_SINK, tin, "%s: %s", fname,
                             strerror(errno));
@@ -1378,15 +1401,16 @@ return false;
       }
   } else if (IsApplTerm(tin)) {
             Functor f = FunctorOfTerm(tin);
-            if (f == FunctorAtom || f == FunctorString || f == FunctorCodes1 ||
+            if (f == FunctorAtom || f == FunctorString1 || f == FunctorCodes1 ||
                 f == FunctorCodes || f == FunctorChars1 || f == FunctorChars) {
-                if (strchr(io_mode, 'w')) {
-                    return Yap_OpenBufWriteStream(PASS_REGS1);
+	      st->user_name = tin;
+	      if (strchr(io_mode, 'w')) {
+		  Yap_open_buf_write_stream(sno,enc);
                 } else {
                     int j = push_text_stack();
                     const char *buf;
 		    //   encoding_t enc = ENC_ISO_UTF8;
-		    //if (f == FunctorAtom || f == FunctorString)
+		    //if (f == FunctorAtom || f == FunctorString1)
 		    //  enc = ENC_ISO_UTF8;
 		    *avoid_bomp = true;
                     buf = Yap_TextTermToText(ArgOfTerm(1,tin) PASS_REGS);
@@ -1396,7 +1420,7 @@ return false;
                     }
                     st->nbuf = pop_output_text_stack(j, buf);
                     Atom nat = Yap_LookupAtom(Yap_StrPrefix(buf, 32));
-                    sno = Yap_open_buf_read_stream(st, buf, st->nsize=(strlen(buf) + 1), &LOCAL_encoding,
+                    sno = Yap_open_buf_read_stream(st, buf, st->nsize=strlen(buf) , &LOCAL_encoding,
             	                                           MEM_BUF_MALLOC, nat,
                                                    MkAtomTerm(NameOfFunctor(f)));
                     pop_text_stack(j);
@@ -1545,6 +1569,9 @@ xarg *   args = Yap_ArgListToVector(tlist, open_defs, OPEN_END, NULL,DOMAIN_ERRO
   }
 
   if (args[OPEN_BOM].used) {
+    if (IsVarTerm(args[OPEN_BOM].tvalue)) {
+      Yap_ThrowError(INSTANTIATION_ERROR,Yap_MkNewApplTerm(Yap_MkFunctor(AtomAlias,1),1),NULL);
+    }
     if (args[OPEN_BOM].tvalue == TermTrue) {
       avoid_bom = false;
       needs_bom = true;
@@ -1553,19 +1580,49 @@ xarg *   args = Yap_ArgListToVector(tlist, open_defs, OPEN_END, NULL,DOMAIN_ERRO
       needs_bom = false;
     }
   }
-  bool script =
-      (args[OPEN_SCRIPT].used ? args[OPEN_SCRIPT].tvalue == TermTrue : false);
+    bool script = false;
+    if (args[OPEN_SCRIPT].used) {
+      if (IsVarTerm(args[OPEN_SCRIPT].tvalue)) {
+	Yap_ThrowError(INSTANTIATION_ERROR,Yap_MkNewApplTerm(Yap_MkFunctor(AtomAlias,1),1),NULL);
+      }
+      script = (args[OPEN_SCRIPT].tvalue == TermTrue);
+    }
+
+    if (args[OPEN_EOF_ACTION].used) {
+      if (IsVarTerm(args[OPEN_EOF_ACTION].tvalue)) {
+	Yap_ThrowError(INSTANTIATION_ERROR,Yap_MkNewApplTerm(Yap_MkFunctor(AtomEOfAction,1),1),NULL);
+      }
+    if (!IsAtomTerm(args[OPEN_EOF_ACTION].tvalue)) {
+      Yap_ThrowError(DOMAIN_ERROR_STREAM_OPTION,Yap_MkApplTerm(Yap_MkFunctor(AtomEOfAction,1),1,&args[OPEN_EOF_ACTION].tvalue),NULL);
+    }
+   Term t =args[OPEN_EOF_ACTION].tvalue;
+   if (t== TermEOfCode) {
+             GLOBAL_Stream[sno].status &= ~Reset_Eof_Stream_f; 
+ GLOBAL_Stream[sno].status |= Repeat_Eof_Stream_f;
+   } else if (t== TermReset) {
+               GLOBAL_Stream[sno].status &= ~(Repeat_Eof_Stream_f);
+     GLOBAL_Stream[sno].status |= Reset_Eof_Stream_f;
+   } else if (t == TermError) {
+          GLOBAL_Stream[sno].status &= ~(Reset_Eof_Stream_f|Repeat_Eof_Stream_f);
+ }
+    }
 
   if (args[OPEN_ALIAS].used) {
+    if (IsVarTerm(args[OPEN_ALIAS].tvalue)) {
+      Yap_ThrowError(INSTANTIATION_ERROR,Yap_MkNewApplTerm(Yap_MkFunctor(AtomAlias,1),1),NULL);
+    }
+    if (!IsAtomTerm(args[OPEN_ALIAS].tvalue)) {
+      Yap_ThrowError(DOMAIN_ERROR_STREAM_OPTION,Yap_MkApplTerm(Yap_MkFunctor(AtomAlias,1),1,&args[OPEN_ALIAS].tvalue),NULL);
+    }
     Atom al = AtomOfTerm(args[OPEN_ALIAS].tvalue);
     if (!Yap_AddAlias(al, sno)) {
       free(args);
       return false;
     }
   }
-  if (st - GLOBAL_Stream < 3) {
+  //  if (st - GLOBAL_Stream < 3) {
     st->status |= RepError_Prolog_f;
-  }
+    //}
 #if MAC
   if (open_mode == AtomWrite) {
     Yap_SetTextFile(RepAtom(AtomOfTerm(file_name))->StrOfAE);
@@ -1596,7 +1653,6 @@ xarg *   args = Yap_ArgListToVector(tlist, open_defs, OPEN_END, NULL,DOMAIN_ERRO
   }
 
   free(args);
-  UNLOCK(st->streamlock);
   {
     Term t = Yap_MkStream(sno);
     return (Yap_unify(ARG3, t));
@@ -1755,7 +1811,6 @@ static Int p_open_null_stream(USES_REGS1) {
   }
   Yap_initStream(sno, st->file, NULL, "w", 0,
                  LOCAL_encoding, st->status, NULL);
-  UNLOCK(st->streamlock);
   t = Yap_MkStream(sno);
   return (Yap_unify(ARG1, t));
 }
@@ -1779,7 +1834,7 @@ int Yap_OpenStream(Term tin, const char *io_mode, Term user_name,
   return -1;
 }
 
-int Yap_FileStream(FILE *fd, Atom name, Term file_name, int flags,
+int Yap_FileStream(FILE *fd, Atom name, Term file_name, estream_f flags,
                    VFS_t *vfsp) {
   CACHE_REGS
   int sno;
@@ -1807,7 +1862,7 @@ int Yap_FileStream(FILE *fd, Atom name, Term file_name, int flags,
   CheckStream__(__FILE__, __FUNCTION__, __LINE__, arg, kind, msg)
 
 static int CheckStream__(const char *file, const char *f, int line, Term arg,
-                         int kind, const char *msg) {
+                         estream_f kind, const char *msg) {
   int sno = -1;
   arg = Deref(arg);
 
@@ -1822,7 +1877,7 @@ static int CheckStream__(const char *file, const char *f, int line, Term arg,
     if (sname == AtomUser) {
       if (kind & Input_Stream_f) {
         if (kind & (Output_Stream_f | Append_Stream_f)) {
-          Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_STREAM, arg,
+          Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_STREAM, arg,
                       "ambiguous use of 'user' as <a stream");
           return (-1);
         }
@@ -1832,19 +1887,16 @@ static int CheckStream__(const char *file, const char *f, int line, Term arg,
       }
     }
     if ((sno = Yap_CheckAlias(sname)) < 0) {
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
       Yap_ThrowError__(file, f, line, EXISTENCE_ERROR_STREAM, arg, msg);
       return -1;
-    } else {
-      LOCK(GLOBAL_Stream[sno].streamlock);
     }
   } else if (IsApplTerm(arg) && FunctorOfTerm(arg) == FunctorStream) {
     arg = ArgOfTerm(1, arg);
     if (!IsVarTerm(arg) && IsIntegerTerm(arg)) {
       sno = IntegerOfTerm(arg);
-    }
+   }
   } else {
-        Yap_ThrowError__(file, f, line, TYPE_ERROR_STREAM, arg, msg);
+        Yap_ThrowError__(file, f, line, DOMAIN_ERROR_STREAM_OR_ALIAS, arg, msg);
 
   }
   if (sno < 0 || sno > MaxStreams) {
@@ -1855,97 +1907,101 @@ static int CheckStream__(const char *file, const char *f, int line, Term arg,
     Yap_ThrowError__(file, f, line, EXISTENCE_ERROR_STREAM, arg, msg);
     return -1;
   }
-//  LOCK(GLOBAL_Stream[sno].streamlock);
-  if ((GLOBAL_Stream[sno].status & Input_Stream_f) &&
-      !(kind & Input_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_STREAM, arg, msg);
-    return -1;
-  }
-  if ((GLOBAL_Stream[sno].status & (Append_Stream_f | Output_Stream_f)) &&
-      !(kind & Output_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_STREAM, arg, msg);
-    return -1;
-  }
-  return sno;
+  if (GLOBAL_Stream[sno].status & (Output_Stream_f|Append_Stream_f)) {
+    if ((kind& (Output_Stream_f|Append_Stream_f))==0) {
+      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_STREAM, arg, msg);
+      return -1;
+    }
+    if ((GLOBAL_Stream[sno].status & (Binary_Stream_f))) {
+      if (kind&Text_Stream_f) {
+	Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_BINARY_STREAM, arg, msg);
+	return -1;
+      }
+    } else {
+      if (kind & Binary_Stream_f) {
+	Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_TEXT_STREAM, arg, msg);
+	return -1;
+      }
+    }
+  }else {
+   if ((kind& Input_Stream_f)==0) {
+	Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_STREAM, arg, msg);
+	return -1;
+      }
+	if ((GLOBAL_Stream[sno].status & (Binary_Stream_f))) {
+	  if (kind&Text_Stream_f) {
+
+	    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_BINARY_STREAM, arg, msg);
+	    return -1;
+	  }
+	} else {
+	  if (kind & Binary_Stream_f) {
+	    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_TEXT_STREAM, arg, msg);
+	    return -1;
+	  }
+	}
+ }
+     return sno;
 }
 
+ 
 int Yap_CheckStream__(const char *file, const char *f, int line, Term arg,
-                      int kind, const char *msg) {
+                      estream_f kind, const char *msg) {
   return CheckStream__(file, f, line, arg, kind, msg);
 }
 
 int Yap_CheckTextStream__(const char *file, const char *f, int line, Term arg,
-                          int kind, const char *msg) {
+                          estream_f kind, const char *msg) {
   int sno;
 
-  if ((sno = CheckStream__(file, f, line, arg, kind, msg)) < 0)
+  if ((sno = CheckStream__(file, f, line, arg, (Text_Stream_f|kind), msg)) < 0)
     return -1;
-  if ((GLOBAL_Stream[sno].status & Binary_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    if (kind == Input_Stream_f)
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_BINARY_STREAM, arg,
-                  msg);
-    else
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_BINARY_STREAM, arg,
-                  msg);
-    return -1;
-  }
-  return sno;
+   return sno;
 }
 
 int Yap_CheckTextWriteStream__(const char *file, const char *f, int line,
                                Term arg, const char *msg) {
-  int sno, kind = Output_Stream_f;
+  int sno, kind = Output_Stream_f ;
   if ((sno = CheckStream__(file, f, line, arg, kind, msg)) < 0)
     return -1;
-  if ((GLOBAL_Stream[sno].status & Binary_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    if (kind & Output_Stream_f)
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_BINARY_STREAM, arg,
-                  msg);
-    else
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_BINARY_STREAM, arg,
-                  msg);
+  if( GLOBAL_Stream[sno].status & Binary_Stream_f) {
+    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_TEXT_STREAM, arg, msg);
     return -1;
-  }
-  return sno;
+  }    
+   return sno;
 }
 
 int Yap_CheckTextReadStream__(const char *file, const char *f, int line,
                               Term arg, const char *msg) {
-  int sno, kind = Input_Stream_f;
+  int sno;
+  estream_f kind = Input_Stream_f;
   if ((sno = CheckStream__(file, f, line, arg, kind, msg)) < 0)
     return -1;
-  if ((GLOBAL_Stream[sno].status & Binary_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    if (kind & Input_Stream_f)
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_BINARY_STREAM, arg,
-                  msg);
-    else
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_BINARY_STREAM, arg,
-                  msg);
+  if( GLOBAL_Stream[sno].status & Binary_Stream_f) {
+    Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_TEXT_STREAM, arg, msg);
     return -1;
-  }
+  }    
   return sno;
 }
 
 int Yap_CheckBinaryStream__(const char *file, const char *f, int line, Term arg,
-                            int kind, const char *msg) {
+                            estream_f kind, const char *msg) {
   int sno;
-  if ((sno = CheckStream__(file, f, line, arg, kind, msg)) < 0)
+  if ((sno = CheckStream__(file, f, line, arg, kind|Binary_Stream_f, msg)) < 0)
     return -1;
-  if (!(GLOBAL_Stream[sno].status & Binary_Stream_f)) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    if (kind == Input_Stream_f)
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_INPUT_TEXT_STREAM, arg, msg);
-    else
-      Yap_ThrowError__(file, f, line, PERMISSION_ERROR_OUTPUT_TEXT_STREAM, arg, msg);
-    return -1;
-  }
   return sno;
 }
+
+
+int Yap_CheckOutputBinaryStream__(const char *file, const char *f, int line, Term arg,
+                            estream_f kind, const char *msg) {
+  int sno;
+  if ((sno = CheckStream__(file, f, line, arg, Output_Stream_f|Append_Stream_f|Binary_Stream_f, msg)) < 0)
+    return -1;
+  return sno;
+}
+
+
 
 /* used from C-interface */
 int Yap_GetFreeStreamDForReading(void) {
@@ -1960,7 +2016,6 @@ int Yap_GetFreeStreamDForReading(void) {
   s->linecount = 1;
   s->linestart = 0;
   Yap_DefaultStreamOps(s);
-  UNLOCK(s->streamlock);
   return sno;
 }
 
@@ -1991,11 +2046,9 @@ static Int close1(USES_REGS1) { /* '$close'(+GLOBAL_Stream) */
   if (sno < 0)
     return false;
   if (sno <= StdErrStream) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
     return true;
   }
   Yap_CloseStream(sno);
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return (TRUE);
 }
 
@@ -2029,10 +2082,6 @@ static Int close2(USES_REGS1) { /* '$close'(+GLOBAL_Stream) */
   Term tlist;
   if (sno < 0)
     return (FALSE);
-  if (sno <= StdErrStream) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
-    return TRUE;
-  }
   xarg *args = Yap_ArgListToVector((tlist = Deref(ARG2)), close_defs, CLOSE_END, NULL,
                                    DOMAIN_ERROR_CLOSE_OPTION);
   if (args == NULL) {
@@ -2041,10 +2090,21 @@ static Int close2(USES_REGS1) { /* '$close'(+GLOBAL_Stream) */
     }
     return false;
   }
-  // if (args[CLOSE_FORCE].used) {
-  // }
+   if (args[CLOSE_FORCE].used) {
+  if (IsVarTerm(args[CLOSE_FORCE].tvalue)) {
+      Yap_ThrowError(INSTANTIATION_ERROR,args[CLOSE_FORCE].source,NULL);
+    }
+    if (args[CLOSE_FORCE].tvalue != TermTrue &&
+	args[CLOSE_FORCE].tvalue != TermFalse) {
+      Yap_ThrowError(DOMAIN_ERROR_CLOSE_OPTION,args[CLOSE_FORCE].source,NULL);
+    }
+
+   }
+   free(args);
+  if (sno <= StdErrStream) {
+    return TRUE;
+  }
   Yap_CloseStream(sno);
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return (TRUE);
 }
 
@@ -2122,3 +2182,101 @@ void Yap_InitIOPreds(void) {
   Yap_InitTimePreds();
   Yap_InitAbsfPreds();
  }
+
+/// @}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

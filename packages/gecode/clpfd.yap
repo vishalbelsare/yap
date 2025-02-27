@@ -1,3 +1,4 @@
+
 /**
 @defgroup YAP_Gecode5and+ClPbBFDbC Programming Finite Domain Constraints in YAP/Gecode
 @ingroup YAP_Gecode5
@@ -68,8 +69,7 @@ declares a set of  boolean variable.
                   (#\)/1,
                   (#\/)/2,
                   (#/\)/2,
-                  in/2 ,
-                  fd_in/2 ,
+                  in/2,
                   ins/2,
 		  boolvar/1,
 		  boolvars/1,
@@ -91,27 +91,29 @@ declares a set of  boolean variable.
 		  clause/4,
 		  dfa/4,
 		  in_dfa/2,
-		  in_dfa/4, /*
-                  tuples_in/2, */
+		  in_dfa/4,
+		  init_gecode/2,
+		    close_gecode/3,
+                  tuples_in/2,
                   labeling/2,
-                  bool_labeling/2 /*,
+                  bool_labeling/2,
                   label/1,
                   indomain/1,
                   serialized/2,
                   global_cardinality/2,
                   global_cardinality/3,
                   circuit/1,
-                  element/3,
-                  automaton/3,
-                  automaton/8,
+%                  element/3,
+%                  automaton/3,
+%                  automaton/8,
                   transpose/2,
                   zcompare/3,
-                  chain/2,
+ %                 chain/2,
                   fd_var/1,
                   fd_inf/2,
                   fd_sup/2,
                   fd_size/2,
-                  fd_dom/2 */
+                  fd_dom/2
                  ]).
 
 /** @pred _X_ #<  _B_  is det
@@ -120,7 +122,7 @@ reified implication
 As an example. consider finding out the people who wanted to sit
 next to a friend and that are are actually sitting together:
 
-```{.prolog}
+```
 preference_satisfied(X-Y, B) :-
     abs(X - Y) #= 1 #<==> B.
 ```
@@ -227,15 +229,10 @@ The product of constant  _Cs_ by  _Vs_ must be in relation
 */
 
 :- use_module(library(gecode)).
+:- use_module(library(lists)).
 :- use_module(library(maplist)).
 
-:- reexport(library(matrix), [(<==)/2, op(800, xfx, '<=='),
-	    op(700, xfx, in),
-	    op(700, xfx, fd_in),
-	    op(700, xfx, ins),
-            op(450, xfx, ..), % should bind more tightly than \/
-	    op(710, xfx, of),
-	    foreach/2, foreach/4, of/2]).
+:- reexport(library(matrix)).
 
 % build array of constraints
 %
@@ -258,7 +255,7 @@ constraint( (_ #<==> _) ).
 constraint( (_ #==> _) ).
 constraint( (_ #<== _) ).
 constraint( (_ #\/ _) ).
-constraint( fd_in(_, _) ). %2,
+constraint( in(_, _) ). %2,
 constraint( ins(_, _) ). %2,
 constraint( all_different(_) ). %1,
 constraint( all_distinct(_) ). %1,
@@ -395,35 +392,31 @@ fd_sum( L, Op, V) :-
 	sum( L, Op, V).
 ( ( A #<==> VBool )) :-
 	get_home(Space-Map),
-	check(A, NA),
 	check(VBool, NVBool),
 	Bool := boolvar(Space),
 	m( NVBool, Bool, 0, 1, Map),
 	Space += reify(Bool, 'RM_EQV', R),
-	post(NA, Space-Map, R).
+	post(A, Space-Map, R).
 ( A #==> VBool) :-
 	get_home(Space-Map),
-	check(A, NA),
 	check(VBool, NVBool),
 	Bool := boolvar(Space),
 	m( NVBool, Bool, 0, 1, Map),
 	Space += reify(Bool, 'RM_IMP', R),
-	post(NA, Space-Map, R).
+	post(A, Space-Map, R).
 ( A #<== VBool) :-
 	get_home(Space-Map),
-	check(A, NA),
 	check(VBool, NVBool),
 	Bool := boolvar(Space),
 	m( NVBool, Bool, 0, 1, Map),
 	Space += reify(Bool, 'RM_PMI', R),
-	post(NA, Space-Map, R).
+	post(A, Space-Map, R).
 '#\\'(A) :-
 	get_home(Space-Map),
-	check(A, NA),
 	B := boolvar(Space),
 	Space += reify(B, 'RM_EQV', R),
 	Space += rel(B, 'BOT_EQV', 0),
-	post(NA, Space-Map, R).
+	post(A, Space-Map, R).
 ( A1 #\/ A2 ) :-
 	get_home(Space-Map),
 	check(A1, NA1),
@@ -452,13 +445,6 @@ fd_sum( L, Op, V) :-
 	check(B, NB),
 	m(X, NX, NA, NB, Map),
 	NX := intvar(Space, NA, NB).
-( X fd_in A..B) :-
-    var(X),
-	get_home(Space-Map),
-	check(A, NA),
-	check(B, NB),
-	m(X, NX, NA, NB, Map),
-	NX := intvar(Space, NA, NB).
 ( Xs ins A..B) :-
 	get_home(Space-Map),
  	check(A, NA),
@@ -479,6 +465,11 @@ boolvars( Xs ) :-
 /** @pred all_different( _Vs_    )
   Verifies whether all elements of a list are different.
 */
+abs( Xs, V ) :-
+	get_home(Env),
+	check(Xs, NXs),
+	check(V, NV),
+	post( rel( abs(NXs), (#=), NV ), Env, _ ).
 all_different( Xs ) :-
 	get_home(Env),
 	check(Xs, NXs),
@@ -601,20 +592,23 @@ extensional_constraint( Tuples, TupleSet) :-
 dfa( S0, Transitions, Finals, DFA) :-
 	DFA := dfa( S0, Transitions, Finals ).
 
-check(V, NV) :-
-	( var(V) -> V = NV ;
+check(V, V).
+/*
+	( attvar(V) -> V = NV ;
+	  var(V) -> V = NV ;
 	  number(V) -> V = NV ;
 	  is_list(V) -> maplist(check, V, NV) ;
 	  V = sum(_,_) -> V = NV ;
-	  V = '[]'(Indx, Mat) -> NV <== '[]'(Indx, Mat) ;
+	  V = '[]'(Indx, Mat) -> NV = '[]'(Indx, Mat) ;
 	  V = '$matrix'(_, _, _, _, C) -> C =.. [_|L], maplist(check, L, NV)  ;
-	  V = A+B -> check(A,NA), check(B, NB), NV = NB+NA ;
-	  V = A-B -> check(A,NA), check(B, NB), NV = NB-NA ;
-	  V = A/\B -> check(A,NA), check(B, NB), NV = NB/\NA ;
-	  V = A\/B -> check(A,NA), check(B, NB), NV = NB\/NA ;
-	  V fd_in A..B, var(V) -> check(A,NA), check(B, NB), NV fd_in NB..NA ;
-	  arith(V, _) -> V =.. [C|L], maplist(check, L, NL), NV =.. [C|NL] ;
-	  constraint(V) -> V =.. [C|L], maplist(check, L, NL), NV =.. [C|NL] ).
+	  V = A+B -> check(A,NA), check(B, NB), NV #= NB+NA ;
+	  V = A-B -> check(A,NA), check(B, NB), NV #= NB-NA ;
+	  V = A/\B -> check(A,NA), check(B, NB), NV #= NB/\NA ;
+	  V = A\/B -> check(A,NA), check(B, NB), NV #= NB\/NA ;
+	  V  = (Z in A..B) -> check(A,NA), check(B, NB), check(Z,NZ), NV = (NZ in NA..NB) ;
+	  arith(V, _) -> V =.. [C|L], maplist(check, L, NL), IV =.. [C|NL], IV #= NV ;
+	  constraint(V) -> V =.. [C|L], maplist(check, L, NL), IV =.. [C|NL], IV #= NV ).
+*/
 
 post( ( A #= B), Env, Reify) :-
 	post( rel( A, (#=), B), Env, Reify).
@@ -698,7 +692,7 @@ post( rel( sum(Foreach, Cond), Op, Out), Space-Map, Reify):- !,
 	).
 post( rel( sum(L0), Op, Out), Space-Map, Reify):-
 !,
-    selectlist(var,L0,L,LC),
+    selectlist(var2,L0,L,LC),
     sumlist(LC,0),
 	( var(Out) -> l(Out, IOut, Map) ; integer(Out) -> IOut = Out ; equality(Out, NOut, Space-Map), l(NOut, IOut, Map) ),
 	maplist(ll(Map), [Out|L], [IOut|IL] ),
@@ -711,7 +705,7 @@ post( rel( sum(L0), Op, Out), Space-Map, Reify):-
 
 post( rel(A1+A2, Op, B), Space-Map, Reify):-
 	var( B ), !,
-	linearize(A1+A2, 1, As, [], CAs, [], 0, B0, Space-Map),
+	linearize(A1+A2, 1, As, [], CAs, [], 0, _B0, Space-Map),
 	l(B, B0, Map),
 	gecode_arith_op( Op, GOP ),
 	(var(Reify) ->
@@ -744,7 +738,7 @@ post( rel(A1+A2, Op, B), Space-Map, Reify):-
 
 post( rel(A1-A2, Op, B), Space-Map, Reify):-
     ( var(B) ), !,
-	linearize(A1-A2, 1, As, [], CAs, [], 0, B0, Space-Map),
+	linearize(A1-A2, 1, As, [], CAs, [], 0, _B0, Space-Map),
 	l(B, B0, Map),
 	gecode_arith_op( Op, GOP ),
 	(var(Reify) ->
@@ -762,7 +756,7 @@ post( rel(A1-A2, Op, B), Space-Map, Reify):-
 post( rel(A1-A2, Op, B), Space-Map, Reify):-
     (  B = _ + _ ; B = _-_), !,
 	linearize(A1-A2, 1, As, Bs, CAs, CBs, 0, A0, Space-Map),
-	linearize(B, -1, Bs, [], CBs, [], A0, B0, Space-Map),
+    linearize(B, -1, Bs, [], CBs, [], A0, B0, Space-Map),
 	gecode_arith_op( Op, GOP ),
 	(var(Reify) ->
 	    ( checklist(is_one, CAs) ->
@@ -778,9 +772,10 @@ post( rel(A1-A2, Op, B), Space-Map, Reify):-
 
 post( rel(A, Op, B), Space-Map, Reify):-
 	arith(A, Name),
-	A =.. [_Op,A1],
-	is_list(A1), !,
-	( _Op = min -> true ; _Op = max  ),
+	A =.. [Op,A1],
+	is_list(A1),
+	( Op == min -> true ; Op == max -> true ; Op == abs ),
+    !,
 	maplist(equality_l( Space-Map),  A1, NA1),
 	maplist(in_c_l( Space-Map), NA1, VA1),
 	equality(B, B1,  Space-Map),
@@ -789,10 +784,9 @@ post( rel(A, Op, B), Space-Map, Reify):-
 post( rel(A, Op, B), Space-Map, Reify):-
 	arith(A, Name),
 	A =.. [_Op,A1],
+	( _Opu = min -> true ; _Op = max -> true; _Op = abs ),
 	!,
-	
-	%( _Opu = min -> true ; _Op = max  ),
-	equality(A1, NA1,  Space-Map),
+    equality(A1, NA1,  Space-Map),
 	in_c(NA1, VA1,  Space-Map),
 	equality(B, B1,  Space-Map),
 	out_c(Name, VA1, B1,  Op, Space-Map, Reify).
@@ -923,6 +917,9 @@ reverse_arith_op( (#>=) ,  (#=<) ).
 reverse_arith_op( (#<)  ,  (#>) ).
 reverse_arith_op( (#=<) ,  (#>=) ).
 
+/*
+  convert to a list of basic constraints
+*/
 linearize(V, C, [A|As], As, [C|CAs], CAs, I, I, _-Map) :-
 	var(V), !,
 	l(V, A, Map).
@@ -937,26 +934,21 @@ linearize([A|B], C, As, Bs, CAs, CBs, I, IF, Env) :-
 	linearize(A, C, As, A1s, CAs, CA1s, I, I1, Env),
 	linearize(B, C, A1s, Bs, CA1s, CBs, I1, IF, Env).
 linearize(A-B, C, As, Bs, CAs, CBs, I, IF, Env) :-
-    !,
 	NC is -C,
 	linearize(A, C, As, A1s, CAs, CA1s, I, I1, Env),
 	linearize(B, NC, A1s, Bs, CA1s, CBs, I1, IF, Env).
 linearize(A, C, As, As, CAs, CAs, I, IF, _) :-
-    !,
 	integer(A), !,
 	IF is I-C*A.
 linearize(A, C, As, As, CAs, CAs, I, IF, _) :-
-    !,
 	ground(A),
 	catch( (B is eval(A)), _, fail ), !,
 	IF is I-C*B.
 linearize(C1*B, C, As, Bs, CAs, CBs, I, IF, Env) :-
-    !,
 	integer(C1), !,
 	NC is C*C1,
 	linearize(B, NC, As, Bs, CAs, CBs, I, IF, Env).
 linearize(B*C1, C, As, Bs, CAs, CBs, I, IF, Env) :-
-    !,
 	integer(C1), !,
 	NC is C*C1,
 	linearize(B, NC, As, Bs, CAs, CBs, I, IF, Env).
@@ -1269,7 +1261,6 @@ new_arith( xor, V1, V2, NV, Space-Map) :-
 	Space += rel(X1, 'BOT_XOR', X2, NX).
 
 
-
 min_times(Min1,Min2,Max1,Max2,Min) :-
 	Min is min(Min1*Min2, min(Min1*Max2, min(Max1*Min2, Max1*Max2))).
 
@@ -1314,19 +1305,20 @@ in_c(C, A, Space-Map) :-
 in_c_l(Env, V, IV) :-
 	in_c(V, IV, Env).
 
-user:term_expansion( ( H :- B), (H :- (gecode_clpfd:init_gecode(Space, Me), NB, gecode_clpfd:close_gecode(Space, Vs, Me)) ) ) :-
+/*
+user:term_expansion( ( H :- B), (H :- (gecode_clpfd:init_gecode(Space, Me), NB, term_variables(B,Vs), gecode_clpfd:close_gecode(Space, Vs, Me)) ) ) :-
     process_constraints(B, NB, Env, Labeling),
     nonvar(Labeling),
-	term_variables(H, Vs),
 	nonvar( Env ), !,
 	Env = env( Space ).
+*/
 
 init_gecode(Space, old) :-
 	nb_current(gecode_space, Space), nonvar(Space), !.
-init_gecode(Space-Map, new) :-
+init_gecode(Space-[], new) :-
 	Space := space,
 	b_setval(gecode_done, false),
-	b_setval(gecode_space, Space-Map).
+	b_setval(gecode_space, Space-[]).
 
 close_gecode(_Space, _Vs, old) :- !.
 close_gecode(Space-Map, Vs0, new) :-
@@ -1334,8 +1326,9 @@ close_gecode(Space-Map, Vs0, new) :-
 	selectlist(intvar(Map), Vs, CVs),
 	maplist(ll(Map), CVs, IVs),
 	SolSpace := search(Space),
-	b_setval(gecode_done, true),
-	CVs := val(SolSpace,IVs).
+    maplist(delete_attributes,Vs),
+    CVs := val(SolSpace,IVs).
+
 
 intvar(Map, V) :-
 	l(V, _IV, Map).
@@ -1357,20 +1350,21 @@ add_el(_G0, _El, Cs-Vs, Cs-Vs).
 %       An attributed variable with attribute value Domain has been
 %       assigned the value Y
 
-attr_unify_hook(_, _) :-
-	b_getval(gecode_done, true), !.
+attr_unify_hook(_A, _B) :-
+  	b_getval(gecode_done, true), !.
 attr_unify_hook(v(IV1,_,_), Y) :-
-        (   get_attr(Y, gecode_clpfd, v(IV2,_,_))
-        ->
-	    nb_getval(gecode_space, Space-_),
-	    ( IV1 == IV2 -> true ;
-	    Space += rel(IV1, 'IRT_EQ', IV2) )
-        ;   var(Y)
-        ->  true
-        ;   integer(Y) ->
-	    nb_getval(gecode_space, Space-_),
-	    Space += rel(IV1, 'IRT_EQ', Y)
-        ).
+    get_home(Space-_),( 
+      get_attr(Y, gecode_clpfd, v(IV2,_,_))
+      ->
+      (IV1==IV2
+	->
+	true
+	;
+	Space += rel(IV2, 'IRT_EQ', IV1)
+      )
+      ;
+      Space += rel(IV1, 'IRT_EQ', Y)
+    ).
 
 %       Translate attributes from this module to residual goals
 
@@ -1414,7 +1408,10 @@ ll(Map, X, Y) :-
 l(V, IV, A, B, _) :-
 	get_attr(V, gecode_clpfd, v(IV, A, B)).
 
+var2(V,V) :- var(V), !.
+
 /*
+
 l(_NV, _OV, _, _, Vs) :-
 	var(Vs), !,
 	fail.
@@ -1429,3 +1426,4 @@ is_one(1).
 /**
 @}
 */
+

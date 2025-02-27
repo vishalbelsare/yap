@@ -1,26 +1,27 @@
 /**
  *   @file bdd/bdd.yap
- *   
- *   @defgroup YAP_BDDsPL Binary Decision Diagrams and Friends
- * @ingroup YAP_BDDs
- * @{
- * 
- * 
- * This library provides an interface to the BDD package CUDD. It requires
- * CUDD compiled as a dynamic library. In Linux this is available out of
- * box in Fedora, but can easily be ported to other Linux
- * distributions. CUDD is available in the ports OSX package, and in
- * cygwin. To use it, call
- * 
- * ~~~~~
- * :-use_module(library(bdd))`.
- * ~~~~~
- * 
- * The following predicates construct a BDD:
- * 
- * \toc
+ *   @brief BDDs in Prolog
  */
 
+/**
+ *   @defgroup BDDs Binary Decision Diagrams and Friends
+ * @ingroup  YAPPackages
+ * @{
+ * @toc
+ * 
+ * @brief This package provides an interface to the BDD package CUDD.
+ *
+ *  The BDD code requires the
+ * CUDD library compiled as a dynamic library. In Linux cudd is available out of
+ * box in Fedora, and is an AUR user support package in the AUR. In distributions such as Debian or Ubuntu you will have to compile from source. A pre-compiled library is available as a MacPorts OSX package, and in
+ * cygwin.
+ *
+ * To use the bdd library, call
+ * 
+ * ~~~
+ * :-use_module(library(bdd))`.
+ * ~~~
+*/
 
 :- module(bdd, [
 	bdd_new/2,
@@ -30,15 +31,34 @@
 	mtbdd_new/3,
 	bdd_eval/2,
 	mtbdd_eval/2,
-	bdd_tree/2,
-	bdd_tree/3,
+	bdd_to_tree/2,
+	bdd_to_tree/3,
 	bdd_size/2,
 	bdd_print/2,
         bdd_print/3,
 	bdd_to_probability_sum_product/2,
 	bdd_to_probability_sum_product/3,
-	bdd_reorder/2,
+        tree_to_sp/2,
+        tree_to_sp/3,
+        tree_to_grad/3,
+        tree_to_grad/4,
+        tree_to_p_grad/4,
+        tree_to_p_grad/5,
+	bdd_reorder/1,
 	bdd_close/1,
+  term_to_cudd/3,
+  term_to_add/4,
+  cudd_eval/4,
+  add_eval/4,
+  cudd_to_term/5,
+  add_to_term/4,
+  cudd_to_probability_sum_product/4,
+  cudd_size/3,
+  cudd_die/1,
+  cudd_reorder/1,
+  cudd_release_node/2,
+  cudd_print/3,
+  cudd_print/4,
 	mtbdd_close/1]).
 
 :- use_module(library(lists)).
@@ -105,10 +125,10 @@ Same as bdd_new/2, but receives a term of the form
 
 */
 bdd_new(T, Vars, cudd(Manager,Cudd,VS,Vars)) :-
-	term_variables(Vars+T, TrueVars),
+    term_variables(Vars-T, TrueVars),
 	VS =.. [vs|TrueVars],
-	copy_term_nat(T-VS,NT-NVS),
-	set_bdd(NT, NVS, Manager, Cudd).
+	copy_term_nat(VS-T,NVS-FT),
+	set_bdd(FT, NVS, Manager, Cudd).
 
 set_bdd(T, VS, Manager, Cudd) :-
     numbervars(VS,0,_),
@@ -159,7 +179,7 @@ writeln_list([B|Bindings]) :-
 	writeln_list(Bindings).
 
 /**
- * @pred list_to_cudd(+ _ListOfEquivalences, Manager, )Initial_ 
+ * @pred list_to_cudd(+ _ListOfEquivalences, Manager,)Initial_ 
  */
 list_to_cudd([],_Manager,Cudd,Cudd).
 %:-    writeln('X').
@@ -288,35 +308,32 @@ with the right-hand side.
 As an example, the BDD for the expression `X+(Y+X)\*(-Z)` becomes:
 
 ```
-bdd(1,[pn(N2,X,1,N1),pp(N1,Y,N0,1),pn(N0,Z,1,1)],vs(X,Y,Z))
+bdd(1,[,pn(N0,Z,1,1),pp(N1,Y,N0,1),pn(N2,X,1,N1)],N2,vs(X,Y,Z))
 ```
 
 
 */
-bdd_tree(cudd(M, X, Vars, LVars), bdd(Dir, List, LVars)) :-
-    cudd_to_term(M, X, Vars, Dir, List).
-bdd_tree(add(M, X, Vars, _), mtbdd(Tree, Vars)) :-
+bdd_to_tree(cudd(M, X, Vars, LVars), bdd(Dir, RList, O, LVars)) :-
+    cudd_to_term(M, X, Vars, Dir, List),
+	List=[H|_],
+	arg(1,H,O),
+	reverse(List,RList).
+bdd_to_tree(add(M, X, Vars, _), mtbdd(Tree, Vars)) :-
 	add_to_term(M, X, Vars, Tree).
 
-bdd_tree(cudd(M, X, Vars, _), LVars, bdd(Dir, List, LVars)) :-
-    cudd_to_term(M, X, Vars, Dir, List).
-bdd_tree(add(M, X, Vars, _), Vars, mtbdd(Tree, Vars)) :-
+bdd_to_tree(cudd(M, X, Vars, _), LVars, bdd(Dir, RList, O, LVars)) :-
+    cudd_to_term(M, X, Vars, Dir, List),
+ 	List=[H|_],
+	arg(1,H,O),
+    reverse(List,RList).
+bdd_to_tree(add(M, X, Vars, _), Vars, mtbdd(Tree, Vars)) :-
 	add_to_term(M, X, Vars, Tree).
 
 /** @pred bdd_to_probability_sum_product(+ _BDDHandle_, - _Prob_)
 
 Each node in a BDD is given a probability  _Pi_. The total
-probability of a corresponding sum-product network is  _Prob_.
-
-
-*/
-bdd_to_probability_sum_product(cudd(M,X,_,Probs), Prob) :-
-	cudd_to_probability_sum_product(M, X, Probs, Prob).
-
-/** @pred bdd_to_probability_sum_product(+ _BDDHandle_, - _Probs_, - _Prob_)
-Each node in a BDD is given a probability  _Pi_. The total
 probability of a corresponding sum-product network is  _Prob_, and
-the probabilities of the inner nodes are  _Probs_.
+tvxhe probabilities of the inner nodes are  _Probs_.
 
 In Prolog, this predicate would correspond to computing the value of a
 BDD. The input variables will be bound to probabilities, eg
@@ -324,18 +341,20 @@ BDD. The input variables will be bound to probabilities, eg
 `eval_bdd` would operate over real numbers:
 
 ```
-    Tree = bdd(1, T, _Vs),
-    reverse(T, RT),
-    foldl(eval_prob, RT, _, V).
+    Tree = bdd(1, T, P, _Vs),
+    maplist(eval_prob, RT).
 
-eval_prob(pp(P,X,L,R), _, P) :-
+eval_prob(pp(P,X,L,R)) :-
     P is  X * L +  (1-X) * R.
-eval_prob(pn(P,X,L,R), _, P) :-
+eval_prob(pn(P,X,L,R)) :-
     P is  X * L + (1-X) * (1-R).
 ```
 
 */
-bdd_to_probability_sum_product(cudd(M,X,_,_Probs), Probs, Prob) :-
+bdd_to_probability_sum_product(cudd(M,X,Probs,_),  Prob) :-
+	cudd_to_probability_sum_product(M, X, Probs, Prob).
+
+bdd_to_probability_sum_product(cudd(M,X,Probs,MapList), MapList, Prob) :-
 	cudd_to_probability_sum_product(M, X, Probs, Prob).
 
 
@@ -349,13 +368,13 @@ bdd_close(cudd(M,_,_Vars, _)) :-
 bdd_close(add(M,_,_Vars, _)) :-
 	cudd_die(M).
 
-/** @pred bdd_close( _BDDHandle_)
+/** @pred bdd_reorder( _BDDHandle_)
 
-  close the BDD and release any resources it holds.
+reorder the BDD using CUDD_REORDER_EXACT.
 
 */
-bdd_reorder(cudd(M,Top,_Vars, _), How) :-
-        cudd_reorder(M, Top,How).
+bdd_reorder(cudd(M,_Top,_Vars, _)) :-
+        cudd_reorder(M).
 
 /** @pred bdd_size(+ _BDDHandle_, - _Size_)
 
@@ -393,7 +412,7 @@ bdd_print(add(M,Top, Vars, _), File, Names) :-
         absolute_file_name(File, AFile, []),
 	cudd_print(M, Top, AFile, Ss).
 
-fetch_name([S=V1|_], V2, SN) :- V1 ==  V2, !,
+fetch_name([S-V1|_], V2, SN) :- V1 ==  V2, !,
 	( atom(S) -> SN = S ; format(atom(SN), '~w', [S]) ).
 fetch_name([_|Y], V, S) :- !,
 	fetch_name(Y, V, S).
@@ -402,27 +421,64 @@ fetch_name([], V, V).
 mtbdd_close(add(M,_,_Vars,_)) :-
 	cudd_die(M).
 
-/* algorithm to compute probabilitie in Prolog */
-bdd_to_sp(bdd(Dir, Tree, _Vars, IVars), Binds, Prob) :-
-	findall(P, sp(Dir, Tree, IVars, Binds, P), [Prob]).
+tree_to_sp(bdd(Dir, Tree, Prob0, Binds), Binds, Prob) :-
+	tree_to_sp(bdd(Dir, Tree, Prob0, Binds), Prob).
 
-sp(Dir, Tree, Vars, Vars, P) :-
-	run_sp(Tree),
-	fetch(Tree, Dir, P).
+/* algorithm to compute probabilities in Prolog */
+tree_to_sp(bdd(Dir, Tree, Prob0, _Binds), Prob) :-
+    maplist(evalp, Tree),
+   % nonvar(Prob0),
+    (Dir == 1 -> Prob0 = Prob ;  Prob is 1.0-Prob0).
 
-run_sp([]).
-run_sp(pp(P,X,L,R).Tree) :-
-	run_sp(Tree),
-	P is X*L+(1-X)*R.
-run_sp(pn(P,X,L,R).Tree) :-
-	run_sp(Tree),
-	P is X*L+(1-X)*(1-R).
 
-fetch(pp(P,_,_,_)._Tree, 1, P).
-fetch(pp(P,_,_,_)._Tree, -1, N) :- N is 1-P.
-fetch(pn(P,_,_,_)._Tree, 1, P).
-fetch(pn(P,_,_,_)._Tree, -1, N) :- N is 1-P.
+evalp( pn(P, X, PL, PR) ):-
+    P is X*PL+ (1.0-X)*(1.0-PR).
+evalp( pp(P, X, PL, PR) ):-  
+    P is X*PL+ (1.0-X)*PR.
 
+tree_to_grad(bdd(Dir, Tree, Out, Binds), Binds, I, Grad) :-
+	tree_to_grad(bdd(Dir, Tree, Out, Binds), I, Grad).
+
+/* algorithm to compute gradient on I */
+tree_to_grad(bdd(Dir, Tree, _-Grad0, _Binds), I, Grad) :-
+	maplist( evalg(I), Tree),
+			( Dir == 1 -> Grad = Grad0 ; Grad is -Grad0).
+
+tree_to_p_grad(bdd(Dir, Tree, Out, Binds), Binds, I, P, Grad) :-
+	tree_to_p_grad(bdd(Dir, Tree, Out, Binds), I, P,Grad).
+
+/* algorithm to compute gradient on I */
+tree_to_p_grad(bdd(Dir, Tree, P0-Grad0, _Binds), I, P, Grad) :-
+    maplist( evalg(I), Tree),
+    ( Dir == 1 ->
+      P=P0,
+      Grad = Grad0 ;
+      P is -P0,
+      Grad is -Grad0).
+
+
+evalg( I, pp(P-G, J-X, L, R) ):-
+    ( number(L) -> PL=L, GL = 0.0 ; L = PL-GL ),
+    ( number(R) -> PR=R, GR = 0.0 ; R = PR-GR ),
+    P is X*PL+ (1.0-X)*PR,
+    (
+	I == J
+    ->
+    G is X*GL+ (1.0-X)*GR+PL-PR
+    ;
+    G is X*GL+ (1.0-X)*GR
+    ).
+evalg( I, pn(P-G, J-X, L, R) ):-
+    ( number(L) -> PL=L, GL = 0.0 ; L = PL-GL ),
+    ( number(R) -> PR=R, GR = 0.0 ; R = PR-GR ),
+    P is X*PL+ (1.0-X)*(1.0-PR),
+    (
+	I == J
+    ->
+    G is X*GL-(1.0-X)*GR+PL-(1-PR)
+    ;
+    G is X*GL- (1.0-X)*GR
+    ).
 
 %% @}
 

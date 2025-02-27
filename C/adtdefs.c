@@ -28,7 +28,6 @@ static char SccsId[] = "%W% %G%";
 #include "Yatom.h"
 #include "clause.h"
 #include "alloc.h"
-#include "yapio.h"
 #include <stdio.h>
 #include <wchar.h>
 #if HAVE_STRING_Hq
@@ -132,13 +131,15 @@ inline static Atom SearchInInvisible(const unsigned char *atom) {
     return (AbsAtom(chain));
 }
 
+
+
 static inline Atom SearchAtom(const unsigned char *p, Atom a) {
   AtomEntry *ae;
   const char *ps = (const char *)p;
-
   /* search atom in chain */
   while (a != NIL) {
     ae = RepAtom(a);
+    //    printf("%d: %s %d %s %d\n",iv++,ps, strlen(ps), ae->StrOfAE, strlen(ae->StrOfAE));
     if (strcmp(ae->StrOfAE, ps) == 0) {
       return (a);
     }
@@ -157,16 +158,16 @@ LookupAtom(const unsigned char *atom) { /* lookup atom in atom table */
   size_t sz = AtomHashTableSize;
   /* compute hash */
   p = atom;
-
+  //printf("(%d)--> %s\n",iv++,atom);
   if (atom==NULL) return NULL;
-  if (atom[0]==0) return AtomEmptyAtom;
+  if (atom[0]==0) return AtomEmpty;
     hash = HashFunction(p);
     hash = hash % sz;
   /* we'll start by holding a read lock in order to avoid contention */
   READ_LOCK(HashChain[hash].AERWLock);
   a = HashChain[hash].Entry;
   /* search atom in chain */
-  na = SearchAtom(atom, a);
+  na = SearchAtom(atom,a);
   if (na != NIL) {
     READ_UNLOCK(HashChain[hash].AERWLock);
     return (na);
@@ -179,6 +180,7 @@ LookupAtom(const unsigned char *atom) { /* lookup atom in atom table */
   if (a != HashChain[hash].Entry) {
     a = HashChain[hash].Entry;
     na = SearchAtom(atom, a);
+    
     if (na != NIL) {
       WRITE_UNLOCK(HashChain[hash].AERWLock);
       return na;
@@ -187,16 +189,12 @@ LookupAtom(const unsigned char *atom) { /* lookup atom in atom table */
 #endif
   /* add new atom to start of chain */
   sz = strlen((const char *)atom);
-  size_t asz = (sizeof *ae) + ( sz+1);
-  ae = malloc(asz);
+  size_t asz = (sizeof *ae)+ALIGN_SIZE( sz+2,sizeof(CELL));
+  ae = calloc(asz, 1);
   if (ae == NULL) {
     WRITE_UNLOCK(HashChain[hash].AERWLock);
     return NIL;
   }
-  // enable fast hashing by making sure that
-  // the last cell is fully initialized.
-  CELL *aec = (CELL*)ae;
-  aec[asz/(YAP_ALIGN+1)-1] = 0;
   NOfAtoms++;
   na = AbsAtom(ae);
   ae->PropsOfAE = NIL;
@@ -222,7 +220,7 @@ lookup atom in atom table */
     /* not really a wide atom */
   if (atom==NULL) return NULL;
   if (atom[0]=='\0')
-    return AtomEmptyAtom;
+    return AtomEmpty;
   ptr = Yap_AllocCodeSpace(len0 + 1);
     if (!ptr)
       return NIL;
@@ -605,14 +603,11 @@ lookup atom in atom table */
     UInt new_size = PredHashTableSize + PredHashIncrement;
     PredEntry **oldp = PredHash;
     PredEntry **np =
-      (PredEntry **)Yap_AllocAtomSpace(sizeof(PredEntry **) * new_size);
+      calloc(sizeof(PredEntry **),new_size);
     UInt i;
 
     if (!np) {
       return FALSE;
-    }
-    for (i = 0; i < new_size; i++) {
-      np[i] = NULL;
     }
     for (i = 0; i < PredHashTableSize; i++) {
       PredEntry *p = PredHash[i];
@@ -636,10 +631,9 @@ lookup atom in atom table */
     PredEntry *p = (PredEntry *)Yap_AllocAtomSpace(sizeof(*p));
 
     if (p == NULL) {
-      WRITE_UNLOCK(fe->FRWLock);
       return NULL;
     }
-    if (cur_mod == TermProlog || cur_mod == 0L) {
+    if (cur_mod == TermProlog) {
       p->ModuleOfPred = 0L;
     } else
       p->ModuleOfPred = cur_mod;
@@ -647,14 +641,21 @@ lookup atom in atom table */
     INIT_LOCK(p->PELock);
     p->KindOfPE = PEProp;
     p->ArityOfPE = fe->ArityOfFE;
-   p->cs.p_code.FirstClause = p->cs.p_code.LastClause = NULL;
+    /* if (!strcmp(RepAtom(NameOfFunctor(fe))->StrOfAE,"skip_list")) { */
+    /* void jmp_deb(int), jmp_deb2(void); */
+    /* Yap_DebugPlWriteln((cur_mod==0?TermProlog:cur_mod)); */
+    /*   jmp_deb(1); */
+
+    /* } */
+      p->cs.p_code.FirstClause = p->cs.p_code.LastClause = NULL;
     p->cs.p_code.NOfClauses = 0;
     p->PredFlags = UndefPredFlag;
+    p->src.OwnerLine = Yap_source_line_no();
     p->src.OwnerFile = Yap_source_file_name();
     p->OpcodeOfPred = UNDEF_OPCODE;
     p->CodeOfPred = p->cs.p_code.TrueCodeOfPred = (yamop *)(&(p->OpcodeOfPred));
     p->cs.p_code.ExpandCode = EXPAND_OP_CODE;
-    p->TimeStampOfPred = 0L;
+    p->CallLineForUndefinedPred = Yap_source_line_no();
     p->LastCallOfPred = LUCALL_ASSERT;
     p->MetaEntryOfPred = NULL;
     if (cur_mod == TermProlog)
@@ -683,7 +684,6 @@ lookup atom in atom table */
 	if (!ExpandPredHash()) {
 	  Yap_FreeCodeSpace((ADDR)p);
 	  WRITE_UNLOCK(PredHashRWLock);
-	  FUNC_WRITE_UNLOCK(fe);
 	  return NULL;
 	}
 	/* retry hashing */
@@ -710,7 +710,6 @@ lookup atom in atom table */
       fe->PropsOfFE = AbsPredProp(p);
       p->NextOfPE = NIL;
     }
-    FUNC_WRITE_UNLOCK(fe);
     {
       Yap_inform_profiler_of_clause(&(p->OpcodeOfPred), &(p->OpcodeOfPred) + 1, p,
 				    GPROF_NEW_PRED_FUNC);
@@ -740,7 +739,8 @@ lookup atom in atom table */
     p->ExtraPredFlags = 0L;
 #endif
     p->MetaEntryOfPred = NULL;
-    p->src.OwnerFile = ap->src.OwnerFile;
+    p->src.OwnerLine = Yap_source_line_no();
+    p->src.OwnerFile = Yap_source_file_name();
     p->OpcodeOfPred = FAIL_OPCODE;
     p->CodeOfPred = p->cs.p_code.TrueCodeOfPred = (yamop *)(&(p->OpcodeOfPred));
     p->cs.p_code.ExpandCode = EXPAND_OP_CODE;
@@ -839,9 +839,11 @@ lookup atom in atom table */
     PredEntry *p;
 
     FUNC_WRITE_LOCK(f);
-    if (!(p = RepPredProp(f->PropsOfFE)))
-      return Yap_NewPredPropByFunctor(f, cur_mod);
-
+    if (!(p = RepPredProp(f->PropsOfFE))) {
+      Prop pn = Yap_NewPredPropByFunctor(f, cur_mod);
+      FUNC_WRITE_UNLOCK(f);
+      return pn;
+    }
     if ((p->ModuleOfPred == cur_mod || !(p->ModuleOfPred))) {
       /* don't match multi-files */
       if (/*!(p->PredFlags & MultiFileFlag) ||*/ true || p->ModuleOfPred || !cur_mod ||
@@ -865,7 +867,9 @@ lookup atom in atom table */
       }
       READ_UNLOCK(PredHashRWLock);
     }
-    return Yap_NewPredPropByFunctor(f, cur_mod);
+    Prop pf =  Yap_NewPredPropByFunctor(f, cur_mod);
+    FUNC_WRITE_UNLOCK(f);
+    return pf;
   }
 
   Prop Yap_PredPropByAtomNonThreadLocal(Atom at, Term cur_mod)
@@ -1140,7 +1144,7 @@ lookup atom in atom table */
       if (!IsNumTerm(Head))
 	return (FALSE);
       i = IntOfTerm(Head);
-      if (i < 0 || i > MAX_ISO_LATIN1)
+      if (i < 0)
 	return FALSE;
       *s++ = i;
       t = TailOfTerm(t);

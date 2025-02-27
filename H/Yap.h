@@ -17,8 +17,17 @@
  @file H/Yap.h
  @brief Main definitions
 
- @defgroup YAPLanguage Supporting features of the Prolog language.
- @ingroup Builtins
+   @defgroup YAPImplementation Implementation Considerations
+   @ingroup YAPProgramming
+
+   @{
+
+   This section is about the YAP implementation, and is mostly of
+   interest to hackers.
+   @}
+
+   @defgroup YAPLanguage Supporting features of the Prolog language.
+ @ingroup YAPImplementation
 
  Prolog includes a number of features that allow program and predicate
  manipulation. Moreover, extensions such as grammar rules can greatly
@@ -171,6 +180,8 @@
 /* funcions that return  a generic pointer */
 typedef void *(*fptr_t)(void);
 
+#include "YapDefs.h"
+
 /*************************************************************************************************
                               main exports in YapInterface.h
 *************************************************************************************************/
@@ -180,8 +191,6 @@ extern const char *Yap_BINDIR, *Yap_ROOTDIR, *Yap_SHAREDIR, *Yap_LIBDIR, *Yap_DL
         *Yap_BOOTFILE, *Yap_INCLUDEDIR;
 
 /* Basic exports */
-
-#include "YapDefs.h"
 
 #include "Atoms.h"
 
@@ -377,8 +386,6 @@ typedef volatile int lockvar;
 
 #include "Regs.h"
 
-#include "Yapproto.h"
-
 
 /*************************************************************************************************
                                        unification routines
@@ -424,6 +431,30 @@ typedef volatile int lockvar;
   
 #include "YapError.h"
 
+#include "Yapproto.h"
+
+
+INLINE_ONLY Term must_be_integer(Term t) {
+  t = Deref(t);
+  if (IsVarTerm(t)) Yap_ThrowError(INSTANTIATION_ERROR, t, NULL);
+  if (!IsIntegerTerm(t)) Yap_ThrowError(TYPE_ERROR_INTEGER, t, NULL);
+  return t;
+}
+INLINE_ONLY Term must_be_module(Term t) {
+  t = Deref(t);
+  if (IsVarTerm(t)) Yap_ThrowError(INSTANTIATION_ERROR, t, NULL);
+  if (!IsAtomTerm(t)) Yap_ThrowError(TYPE_ERROR_ATOM, t, NULL);
+  return t;
+}
+INLINE_ONLY Term must_be_unbound(Term t) {
+  t = Deref(t);
+  if (!IsVarTerm(t)) Yap_ThrowError(UNINSTANTIATION_ERROR, t, NULL);
+  return t;
+ }
+#define must_be_variable(t) if (!IsVarTerm(t)) Yap_ThrowError(UNINSTANTIATION_ERROR, v, NULL)
+
+
+ 
 #define MAX_EMPTY_WAKEUPS 16
 
 /*************************************************************************************************
@@ -498,22 +529,20 @@ typedef enum e_restore_t {
 *************************************************************************************************/
 #ifdef YAPOR
 #define YAPEnterCriticalSection()                                              \
+    prolog_exec_mode old_mode =   LOCAL_PrologMode;\
   {                                                                            \
-    if (worker_id != GLOBAL_locks_who_locked_heap) {                           \
+    if (worker_id != GLOBAL_locks_who_locked_heap) {			\
       LOCK(GLOBAL_locks_heap_access);                                          \
       GLOBAL_locks_who_locked_heap = worker_id;                                \
     }                                                                          \
-    LOCAL_PrologMode |= CritMode;                                              \
+    LOCAL_PrologMode = CritMode;                                              \
     LOCAL_CritLocks++;                                                         \
   }
 #define YAPLeaveCriticalSection()                                              \
   {                                                                            \
     LOCAL_CritLocks--;                                                         \
     if (!LOCAL_CritLocks) {                                                    \
-      LOCAL_PrologMode &= ~CritMode;                                           \
-      if (LOCAL_PrologMode & AbortMode) {                                      \
-        LOCAL_PrologMode &= ~AbortMode;                                        \
-        Yap_Error(ABORT_EVENT, 0, "");                                         \
+    LOCAL_PrologMode = old_mode;                           \
       }                                                                        \
       GLOBAL_locks_who_locked_heap = MAX_WORKERS;                              \
       UNLOCK(GLOBAL_locks_heap_access);                                        \
@@ -523,11 +552,11 @@ typedef enum e_restore_t {
 #define YAPEnterCriticalSection()                                              \
   {                                                                            \
     /* LOCK(BGL); */                                                           \
-    LOCAL_PrologMode |= CritMode;                                              \
+    LOCAL_PrologMode  = CritMode;                                              \
   }
 #define YAPLeaveCriticalSection()                                              \
   {                                                                            \
-    LOCAL_PrologMode &= ~CritMode;                                             \
+    LOCAL_PrologMode = CritMode;                                             \
     if (LOCAL_PrologMode & AbortMode) {                                        \
       LOCAL_PrologMode &= ~AbortMode;                                          \
       Yap_Error(ABORT_EVENT, 0, "");                                           \
@@ -536,26 +565,22 @@ typedef enum e_restore_t {
     /* UNLOCK(BGL); */                                                         \
   }
 #else
-#define YAPEnterCriticalSection()                                              \
-  {                                                                            \
-    LOCAL_PrologMode |=                                                        \
-        CritMode; /* printf("%d,                                               \
-                     %s:%d\n",LOCAL_CritLocks+1,__FILE__,__LINE__);*/          \
-    LOCAL_CritLocks++;                                                         \
-  }
-#define YAPLeaveCriticalSection()                                              \
-  {                                                                            \
-    LOCAL_CritLocks--;                                                         \
-    /*printf("%d, %s:%d\n",LOCAL_CritLocks,__FILE__,__LINE__);*/               \
-    if (!LOCAL_CritLocks) {                                                    \
-      LOCAL_PrologMode &= ~CritMode;                                           \
-      if (LOCAL_PrologMode & AbortMode) {                                      \
-        LOCAL_PrologMode &= ~AbortMode;                                        \
-        Yap_RestartYap(1);                                                     \
-      }                                                                        \
-    }                                                                          \
-  }
+#define YAPEnterCriticalSection()                                          { }
+
+#define YAPLeaveCriticalSection()   {                                        }
+
 #endif /* YAPOR */
+
+/**
+ * support for recovering handle stack and block stack on exit
+ *
+ */
+#define CLOSE_HANDLES_AND_RETURN(ys) Yap_CloseHandles(ys); return
+#define CLOSE_BUFFERS_AND_RETURN(lvl) pop_text_stack(lvl); return
+#define CLOSE_LOCAL_STACKS_AND_RETURN(ys,lvl)\
+  Yap_CloseHandles(ys); \
+  pop_text_stack(lvl); \
+  return
 
 /* when we are calling the InitStaff procedures */
 #define AT_BOOT 0
@@ -605,10 +630,10 @@ typedef struct idb_queue {
   QueueEntry *FirstInQueue, *LastInQueue;
 } db_queue;
 
-void Yap_init_tqueue(db_queue *dbq);
-void Yap_destroy_tqueue(db_queue *dbq USES_REGS);
-bool Yap_enqueue_tqueue(db_queue *father_key, Term t USES_REGS);
-bool Yap_dequeue_tqueue(db_queue *father_key, Term t, bool first,
+extern void Yap_init_tqueue(db_queue *dbq);
+extern void Yap_destroy_tqueue(db_queue *dbq USES_REGS);
+extern bool Yap_enqueue_tqueue(db_queue *father_key, Term t USES_REGS);
+extern bool Yap_dequeue_tqueue(db_queue *father_key, Term *t, bool first,
                         bool release USES_REGS);
 
 #ifdef THREADS
@@ -616,9 +641,10 @@ bool Yap_dequeue_tqueue(db_queue *father_key, Term t, bool first,
 typedef struct thread_mbox {
   Term name;
   pthread_mutex_t mutex;
-  pthread_cond_t cond;
+  pthread_cond_t empty;
+  pthread_cond_t full;
   struct idb_queue msgs;
-  int nmsgs, nclients; // if nclients < 0 mailbox has been closed.
+  int nmsgs, nclients,max; // if nclients < 0 mailbox has been closed.
   bool open;
   struct thread_mbox *next;
 } mbox_t;
@@ -631,16 +657,18 @@ typedef struct thandle {
   UInt sysize;
   void *stack_address;
   Term tdetach;
-  Term cmod, texit_mod;
-  struct DB_TERM *tgoal, *texit;
+  Term cmod, texit_mod, itiq;
+  Term tgoal, texit;
   int id;
   int ret;
   REGSTORE *default_yaam_regs;
   REGSTORE *current_yaam_regs;
   struct pred_entry *local_preds;
   pthread_t pthread_handle;
+  pthread_barrier_t pthread_barrier;
   mbox_t mbox_handle;
   int ref_count;
+  Prop ge;
 #ifdef LOW_LEVEL_TRACER
   long long int thread_inst_count;
   int been_here1;
@@ -758,27 +786,6 @@ Yap_has_a_signal__ (USES_REGS1)
 }
 
 
-#define must_be_variable(t) if (!IsVarTerm(t)) Yap_ThrowError(UNINSTANTIATION_ERROR, v, NULL)
-
-INLINE_ONLY Term must_be_module(Term t) {
-  t = Deref(t);
-  if (IsVarTerm(t)) Yap_ThrowError(INSTANTIATION_ERROR, t, NULL);
-  if (!IsAtomTerm(t)) Yap_ThrowError(TYPE_ERROR_ATOM, t, NULL);
-  return t;
-}
-
-INLINE_ONLY Term must_be_integer(Term t) {
-  t = Deref(t);
-  if (IsVarTerm(t)) Yap_ThrowError(INSTANTIATION_ERROR, t, NULL);
-  if (!IsIntegerTerm(t)) Yap_ThrowError(TYPE_ERROR_INTEGER, t, NULL);
-  return t;
-}
-
- INLINE_ONLY Term must_be_unbound(Term t) {
-  t = Deref(t);
-  if (!IsVarTerm(t)) Yap_ThrowError(UNINSTANTIATION_ERROR, t, NULL);
-  return t;
-}
 
 /*************************************************************************************************
 Global variables for JIT

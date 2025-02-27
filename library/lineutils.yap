@@ -13,12 +13,12 @@
 	   search_for/3,
 	   scan_natural/3,
 	   scan_integer/3,
+
 	   natural/3,
 	   integer/3,
 	   blank/3,
 	   split/2,
 	   split/3,
-	   split/4,
 	   split/5,
        split_unquoted/3,
 	   fields/2,
@@ -50,10 +50,10 @@ available by loading the
 */
 
 :- meta_predicate
-	filter(v -2),
+	filter(2),
 	filter(+,+,2),
 	file_filter(+,+,2),
-	file_filter_with_initialization(+,+,2,+,:),
+	file_filter_with_initialization(+,+,3,+,:),
 	file_filter_with_start_end(+,+,2,2,2),
 	process(+,1).
 
@@ -114,7 +114,7 @@ scan_natural(N0,N) -->
 	[C],
 	{C >= 0'0, C =< 0'9 }, !,
 	{ N1 is N0*10+(C-0'0) }, %'
-	get_natural(N1,N).
+	scan_natural(N1,N).
 scan_natural(N,N) --> [].
 
 /** @pred natural(? _Nat_,+ _Line_,+ _RestOfLine_)
@@ -130,7 +130,7 @@ natural(N0,N) -->
 	[C],
 	{C >= 0'0, C =< 0'9 }, !,
 	{ N1 is N0*10+(C-0'0) }, %'
-	get_natural(N1,N).
+	natural(N1,N).
 natural(N,N) --> [].
 
 /** @pred skip_whitespace(+ _Line_,+ _RestOfLine_)
@@ -329,7 +329,14 @@ using the blank characters  as field separators.
 
 */
 fields(String, Strings) :-
-	fields(" 	", Strings, String, []).
+	dofields(" 	",  First, More, String, []),
+	(
+	  First = [], More = []
+	->
+	  Strings = []
+	;
+	  Strings = [First|More]
+	).
 
 /** @pred fields(+ _Line_,+ _Separators_,- _Split_)
 
@@ -354,7 +361,7 @@ fields(String, FieldsCodes, Strings) :-
 	  Strings = [First|More]
 	).
 
-dofields(FieldsCodes, [], New.More) -->
+dofields(FieldsCodes, [], [New|More]) -->
 	[C],
 	{ member(C, FieldsCodes) }, !,
 	dofields(FieldsCodes, New, More).
@@ -463,7 +470,7 @@ file_filter(Inp, Out, Command) :-
 /** @pred file_filter_with_initialization(+ _FileIn_, + _FileOut_, + _Goal_, + _FormatCommand_,   + _Arguments_)
 
 Same as file_filter/3, but before starting the filter execute
-`format/3` on the output stream, using  _FormatCommand_ and
+format/3 on the output stream, using  _FormatCommand_ and
  _Arguments_.
 */
 file_filter_with_initialization(Inp, Out, Command, FormatString, Parameters) :-

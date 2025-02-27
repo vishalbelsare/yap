@@ -15,21 +15,14 @@
 *                                                                        *
 *************************************************************************/
 
+
 /**
-  @defgroup Threads Threads
-  @ingroup YapExtensions
-  @{
-
-  YAP implements a SWI-Prolog compatible multithreading
-library. Like in SWI-Prolog, Prolog threads have their own stacks and
-only share the Prolog <em>heap</em>: predicates, records, flags and other
-global non-backtrackable data.  The package is based on the POSIX thread
-standard (Butenhof:1997:PPT) used on most popular systems except
-for MS-Windows.
-
+ @file threads.yap
+ @brief thread support
 */
 
-:- system_module( '$_threads', [current_mutex/3,
+:- system_module_( '$_threads',
+   [current_mutex/3,
         current_thread/2,
         message_queue_create/1,
         message_queue_create/2,
@@ -70,9 +63,22 @@ for MS-Windows.
         threads/0,
         (volatile)/1,
         with_mutex/2], ['$reinit_thread0'/0,
-        '$thread_gfetch'/1,
         '$thread_local'/2]).
 
+/**
+  @defgroup Threads Threads
+  @ingroup YapExtensions
+  @{
+
+
+  YAP implements a SWI-Prolog compatible multithreading
+library. Like in SWI-Prolog, Prolog threads have their own stacks and
+only share the Prolog <em>heap</em>: predicates, records, flags and other
+global non-backtrackable data.  The package is based on the POSIX thread
+standard (Butenhof:1997:PPT) used on most popular systems except
+for MS-Windows.
+
+*/
 :- use_system_module( '$_boot', [
         '$run_at_thread_start'/0,
         '$system_catch'/4]).
@@ -105,7 +111,11 @@ volatile(P) :-
 
 '$do_volatile'(P,M) :- dynamic(M:P).
 
-/** @defgroup Creating_and_Destroying_Prolog_Threads Creating and Destroying Prolog Threads
+/**
+
+@}
+
+@defgroup Creating_and_Destroying_Prolog_Threads Creating and Destroying Prolog Threads
 @ingroup Threads
 
 @{
@@ -127,45 +137,43 @@ volatile(P) :-
 
 
 '$top_thread_goal'(G, Detached) :- %writeln(G), %start_low_level_tracer
-       '$thread_self'(Id),
+       '$thread_self'(Id0),
+    '$mk_tstatus_key'(Id0, Key),
        %writeln(Id),
-	(Detached == true -> '$detach_thread'(Id) ; true),
-	'$current_module'(Module),
-	'$run_at_thread_start',
+	(Detached == true -> '$detach_thread'(Id0) ; true),
 	% always finish with a throw to make sure we clean stacks.
-	(catch(Module:G, Exception ,'$close_thread'(Exception, Detached)) ->
-	     '$close_thread'('$thread_finished'(true), Detached);
-	 '$close_thread'('$thread_finished'(false), Detached)),
-	% force backtracking and handling exceptions	
-	fail.
-
-%call_(G, Detached):- G, !, '$close_thread'('$thread_finished'(true), Detached).
-%call_(_, Detached):- '$close_thread'('$thread_finished'(false), Detached).
-
-	   
-'$close_thread'(Status, _Detached) :-
-	'$thread_zombie_self'(Id0), !,
-	'$record_thread_status'(Id0,Status),
-	'$run_at_thread_exit'(Id0),
-	'$erase_thread_info'(Id0).
+       ignore(setup_call_catcher_cleanup(
+	'$run_at_thread_start',
+G,
+ Port,
+    '$record_thread_status'(Key,Port)
+)),
+    '$thread_zombie_self'(Id0),
+    '$run_at_thread_exit'(Id0),
+    '$erase_thread_info'(Id0).
+%    (var(Detached) -> tru'$mutex_lock'(Id0);true),
 
 % OK, we want to ensure atomicity here in case we get an exception while we
 % are closing down the thread.
-'$record_thread_status'(Id0,Stat) :- !,    
-	'$mk_tstatus_key'(Id0, Key),
-	 ((recorded(Key, _, R), erase(R), fail)
-	 ;
-	  ((Stat = '$thread_finished'(Status) ->
-	  recorda(Key, Status, _)
-	 ;
-	 recorda(Key, exception(Stat), _)
-	 ))).
+'$record_thread_status'(Key,_Port) :-
+    recorded(Key, _, R), erase(R), fail.
+'$record_thread_status'(Key,Port) :-
+    '$port_thread_code'(Port,Code),
+    recorda(Key,Code,_),
+    fail.
+'$record_thread_status'(_Key,_Port).
+
+'$port_thread_code'(exit,true).
+'$port_thread_code'(fail,false).
+'$port_thread_code'(exception(E),exception(E)).
+'$port_thread_code'(foreign_exception(E),exception(E)).
+'$port_thread_code'(!,true).
 
 /** @pred thread_create(: _Goal_)
 
 
 Create a new Prolog detached thread using default options. See thread_create/3.
-
+8
 */
 thread_create(Goal) :-
 	G0 = thread_create(Goal),
@@ -503,12 +511,12 @@ thread_join(Id, Status) :-
 	throw_error(uninstantiation_error(Status),thread_join(Id, Status)).
 thread_join(Id, Status) :-
     '$check_thread_or_alias'(Id, thread_join(Id, Status)),
-	'$thread_id_alias'(Id0, Id),
-	'$thread_join'(Id0),
-	'$mk_tstatus_key'(Id0, Key),
-	recorded(Key, Status, R),
-	erase(R),
-	'$thread_destroy'(Id0).
+    '$thread_id_alias'(Id0, Id),
+    '$thread_join'(Id0),
+   '$mk_tstatus_key'(Id0, Key),
+    recorded(Key, Status, R),
+    erase(R),
+    '$thread_destroy'(Id0).
 
 
 thread_cancel(Id) :-
@@ -584,6 +592,7 @@ thread_at_exit(Goal) :-
 @defgroup Monitoring_Threads Monitoring Threads
 @ingroup Threads
 
+@{
 
 Normal multi-threaded applications should not need these the predicates
 from this section because almost any usage of these predicates is
@@ -593,7 +602,6 @@ exceptions using catch/3 is the only safe way to deal with
 thread-existence errors.
 
 These predicates are provided for diagnosis and monitoring tasks.
-@{
 */
 
 /** @pred current_thread(+ _Id_, - _Status_)
@@ -816,22 +824,6 @@ thread_statistics(Id, Key, Val) :-
 %% @}
 
 
-/** @defgroup Signalling_Threads Signalling Threads
-@ingroup Threadas
-
-
-These predicates provide a mechanism to make another thread execute some
-goal as an <em>interrupt</em>.  Signalling threads is safe as these
-interrupts are only checked at safe points in the virtual machine.
-Nevertheless, signalling in multi-threaded environments should be
-handled with care as the receiving thread may hold a <em>mutex</em>
-(see with_mutex/2).  Signalling probably only makes sense to start
-debugging threads and to cancel no-longer-needed threads with throw/1,
-where the receiving thread should be designed carefully do handle
-exceptions at any point.
-
-*/
-
 /** @defgroup Thread_Synchronisation Thread Synchronisation
 @ingroup Threads
 @{
@@ -852,7 +844,7 @@ predicate `address/2`, representing the address of a person and we want
 to change the address by retracting the old and asserting the new
 address.  Between these two operations the database is invalid: this
 person has either no address or two addresses, depending on the
-assert/retract order.
+assert/retract order.	     
 
 Here is how to realise a correct update:
 
@@ -1167,9 +1159,12 @@ thread_get_message(Queue, Term) :- var(Queue), !,
 	throw_error(instantiation_error,thread_get_message(Queue,Term)).
 thread_get_message(Queue, Term) :-
 	recorded('$thread_alias',[Id|Queue],_R), !,
-	'$message_queue_receive'(Id, Term).
+	'$message_queue_receive'(Id, MaybeTerm),
+	( MaybeTerm = Term -> true ; 	'$message_queue_send'(Id, MaybeTerm), thread_get_message(Queue, Term) ).
 thread_get_message(Queue, Term) :-
-	'$message_queue_receive'(Queue, Term).
+	'$message_queue_receive'(Queue, MaybeTerm),
+	( MaybeTerm = Term -> true ; 	'$message_queue_send'(Queue, MaybeTerm), thread_get_message(Queue, Term) ).
+
 
 
 /** @pred thread_peek_message(? _Term_)
@@ -1243,6 +1238,7 @@ tthread_peek_message(Queue, Term) :-
 /** @defgroup Signalling_Threads Signalling Threads
 @ingroup Threadas
 
+@{
 
 These predicates provide a mechanism to make another thread execute some
 goal as an <em>interrupt</em>.  Signalling threads is safe as these
@@ -1254,7 +1250,7 @@ debugging threads and to cancel no-longer-needed threads with throw/1,
 where the receiving thread should be designed carefully do handle
 exceptions at any point.
 
-@{
+
 */
 
 /** @pred thread_sleep(+ _Time_)
@@ -1279,7 +1275,7 @@ thread_sleep(Time) :-
 	).
 thread_sleep(Time) :-
 	float(Time), !,
-	(	Time > 0.0 ->
+	(	Time > 0 ->
 		STime is integer(float_integer_part(Time)),
 		NTime is integer(float_fractional_part(Time))*1000000000,
 		'$thread_sleep'(STime,NTime,_,_)
@@ -1292,17 +1288,7 @@ thread_sleep(Time) :-
 thread_signal(Id, Goal) :-
 	'$check_thread_or_alias'(Id, thread_signal(Id, Goal)),
 	must_be_callable(Goal),
-	'$thread_id_alias'(Id0, Id),
-	(	recorded('$thread_signal', [Id0| _], R), erase(R), fail
-	;	true
-	),
-	recorda('$thread_signal', [Id0| Goal], _),
-	'$signal_thread'(Id0).
-
-'$thread_gfetch'(G) :-
-	'$thread_self'(Id),
-	recorded('$thread_signal',[Id|G],R),
-	erase(R).
+	'$signal_thread'(Id,Goal).
 
 %% @}
 
@@ -1312,7 +1298,10 @@ thread_signal(Id, Goal) :-
 @{
 
 Besides queues threads can share and exchange data using dynamic
-predicates. The multi-threaded version knows about two types of
+predicate
+
+
+s. The multi-threaded version knows about two types of
 dynamic predicates. By default, a predicate declared <em>dynamic</em>
 (see dynamic/1) is shared by all threads. Each thread may
 assert, retract and run the dynamic predicate. Synchronisation inside
@@ -1379,6 +1368,14 @@ thread_local(X) :-
 	throw_error(type_error(callable,X),thread_local(Mod:X)).
 
 
+with_mutex(M,G) :-
+    setup_call_catcher_cleanup(
+         ((var(M)->mutex_create(M);true), mutex_lock(M)),
+G,
+_Ex,
+mutex_unlock(M)).
+
+
 /**
  * @pred private( _N_/_A_ )
  *
@@ -1387,9 +1384,6 @@ thread_local(X) :-
  */
 private(P) :-
     thread_local(P).
-
-
-%% @}
 
 
 /**

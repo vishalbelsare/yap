@@ -8,26 +8,26 @@
 
 #define YAP_CPP_INTERFACE 1
 
+extern "C" {
+
+#include "YapConfig.h"
+
+};
+
+#include <gmpxx.h>
+
+
 #include <iostream>
 #include <string>
 #include <vector>
 #include <initializer_list>
 
-extern "C" {
-
-#include "YapConfig.h"
-
-}
-
-#include <gmpxx.h>
-
-
 
 
 /*!
  *
- *   @ingroup ForeignLanguageInterface
- *   @defgroup yap-cplus-interface An object oriented interface for YAP.
+ *   @defgroup FLI_YAP-cplus-interface An object oriented interface for YAP.
+ *   @ingroup YAPAPI
  *
 1 *   @{
  *

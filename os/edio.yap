@@ -1,21 +1,28 @@
 %
-% Edinburgh IO.
 /**
  * @file   edio.yap
  * @author VITOR SANTOS COSTA <vsc@VITORs-MBP.lan>
  * @date   Wed Jan 20 01:07:02 2016
+ % @brief Edinburgh IO.
  *
- * @brief  Input/Output according to the DEC-10 Prolog. PLease consider using the ISO
- * standard predicates for new code.
+ */
+
+/**
+ * @defgroup EdIO (DEC-10) Edinburgh  Input/Output
+ * @ingroup InputOutput
  *
+ * @brief  Input/Output according to the DEC-10 Prolog. PLease consider using the ISO standard predicates for new code.
+ *
+ * @{
  *
 */
 
 
 				%
 
-/** @pred  see(+ _S_)
+/**
 
+@pred  see(+ _S_)
 
 If  _S_ is a currently opened input stream then it is assumed to be
 the current input stream. If  _S_ is an atom it is taken as a
@@ -126,6 +133,26 @@ tell(F) :-
 
 
   */
+append(user) :- !, set_output(user_output).
+append(F) :- var(F), !,
+	throw_error(instantiation_error,append(F)).
+append(F) :-
+	current_output(Stream),
+	stream_property(Stream,file_name(F)),
+	!.
+append(F) :-
+	current_stream(_,write,Stream),
+	'$user_file_name'(Stream, F),  !,
+	set_output(Stream).
+append(Stream) :-
+	'$stream'(Stream),
+	current_stream(_,write,Stream), !,
+	set_output(Stream).
+append(F) :-
+	open(F,write,Stream),
+	set_output(Stream).
+
+
 /** @pred  telling(- _S_)
 
 
@@ -152,3 +179,5 @@ told :- current_output(Stream),
         !,
 	set_output(user_output),
 	close(Stream).
+
+%% @}

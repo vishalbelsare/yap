@@ -8,8 +8,7 @@
 
 /*
 :- module(system(error,
-	  [ must_be_of_type/2,		% +Type, +Term
-	    must_be_of_type/3,		% +Type, +Term, +Comment
+	  [ must_be_of_type/2,		% +	    must_be_of_type/3,		% +Type, +Term, +Comment
 		must_be/2,		% +Type, +Term
   	    must_be/3,		% +Type, +Term, +Comment
   	    type_error/2,		% +Type, +Term
@@ -30,9 +29,18 @@
  @defgroup ErrorBuiltins Error generating type-checking
 @ingroup YAPError
 
+@beiwd\\\
+]]]]]
+
+
+]
+
+
+
 This  code is based oon the SWI   predicates  to  simplify  error  generation  and
 checking. Adapted to use YAP built-ins.
 
+@{
 Its implementation is based on a discussion on the SWI-Prolog
 mailinglist on best practices in error   handling. The utility predicate
 must_be/2  provides  simple  run-time  type    validation.  The  *_error
@@ -122,11 +130,11 @@ must_be_of_type(Type, X) :-
 	;   is_not(Type, X)
 	).
 
-inline(must_be_of_type( atom, X ), is_atom(X, _) ).
-inline(must_be_of_type( module, X ), is_module(X, _) ).
-inline(must_be_of_type( callable, X ), must_be_callable(X) ).
-inline(must_be_atom( X ), is_atom(X, _) ).
-inline(must_be_module( X ), is_atom(X, _) ).
+'$inline'(must_be_of_type( atom, X ), is_atom(X, _) ).
+'$inline'(must_be_of_type( module, X ), is_module(X, _) ).
+'$inline'(must_be_of_type( callable, X ), must_be_callable(X) ).
+'$inline'(must_be_atom( X ), is_atom(X, _) ).
+'$inline'(must_be_module( X ), is_atom(X, _) ).
 
 must_be_of_type(predicate_indicator, X, Comment) :-
 	!,
@@ -146,7 +154,7 @@ must_bind_to_type(Type, X) :-
 	;   is_not(Type, X)
 	).
 
-%% @pred 	@predicate is_not(+Type, @Term)
+%% @pred 	@predicate is_not(+Type, :Term)
 %
 %	Throws appropriate error. It is _known_ that Term is not of type
 %	Type.
@@ -183,7 +191,7 @@ ground_type(text).
 ground_type(string).
 
 not_a_list(Type, X) :-
-	'$skip_list'(_, X, Rest),
+	skip_list(_, X, Rest),
 	(   var(Rest)
 	->  instantiation_error(X)
 	;   type_error(Type, X)
@@ -198,7 +206,7 @@ not_a_rational(X) :-
 	;   type_error(rational,X)
 	).
 
-%% @pred	is_of_type(+Type, @Term) is semidet.
+%% @pred	is_of_type(+Type, :Term) is semidet.
 %
 %	True if Term satisfies Type.
 
@@ -206,7 +214,7 @@ is_of_type(Type, Term) :-
 	has_type(Type, Term).
 
 
-%% @pred	has_type(+Type, @Term) is semidet.
+%% @pred	has_type(+Type, :Term) is semidet.
 %
 %	True if Term satisfies Type.
 
@@ -244,7 +252,7 @@ has_type(string, X)	  :- string(X).
 has_type(stream, X)	  :- is_stream(X).
 has_type(list(Type), X)	  :- is_list(X), element_types(X, Type).
 
-%% @pred	may_bind_to_type(+Type, @Term) is semidet.
+%% @pred	may_bind_to_type(+Type, :Term) is semidet.
 %
 %	True if _Term_ or term _Term\theta_ satisfies _Type_.
 
@@ -280,12 +288,26 @@ may_bind_to_type(predicate_indicator, X)  :-
 	 X = N/A
 	->
 	 may_bind_to_type( atom, N),
-	 may_bind_to_type(integer, A)
+	 may_bind_to_type(integer, A),
+	 (number(A), A < 0
+	 ->
+	     throw_error(domain_error(not_less_than_zero,A),may_bind_to_type(predicate_indicator, X))
+	 ;
+	 true
+	 )
 	;
 	 X = N//A
 	->
 	 may_bind_to_type( atom, N),
-	 may_bind_to_type(integer, A)
+	 may_bind_to_type(integer, A),
+	 (number(A), A < 0
+	 ->
+	     throw_error(domain_error(not_less_than_zero,A),may_bind_to_type(predicate_indicator, X))
+	 ;
+	 true
+	 )
+	;
+	throw_error(type_error(predicate_indicator,X),may_bind_to_type(predicate_indicator, X))
 	).
 
 
@@ -327,7 +349,7 @@ element_types([H|T], Type) :-
 	element_types(T, Type).
 
 is_list_or_partial_list(L0) :-
-	'$skip_list'(_, L0,L),
+	skip_list(_, L0,L),
 	( var(L) -> true ; L == [] ).
 
 must_be_instantiated(X) :-

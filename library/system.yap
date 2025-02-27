@@ -27,22 +27,20 @@
 
 :- module(operating_system_support,
     [
-%     copy_file/2,
+     copy_file/2,
      datime/1,
      %delete_file/1,
      delete_file/2,
-	directory_files/2,
 	directory_map/2,
 	environ/2,
 	exec/3,
 	file_property/2,
 	host_id/1,
-				     host_name/1,
-				     kill/1,
-				     md5/3,
+	host_name/1,
 	pid/1,
-				     mktemp/2,
-%	make_directory/1,
+	mktemp/2,
+	%	make_directory/1,
+	md5/3,
 	popen/3,
      read_link/3,
      rename_file/2,
@@ -50,14 +48,14 @@
 	shell/1,
 	shell/2,
 	system/0,
-	system/1,
 	system/2,
 	mktime/2,
 	tmpnam/1,
+	temp_file/2,
 	tmp_file/2,
     tmpdir/1,
-	wait/2,
-	working_directory/2
+	wait/2
+%	working_directory/2
           ]).
 
 
@@ -83,7 +81,7 @@ are available through the `use_module(library(system))` command.
 
 :- use_module(library(lists), [append/3]).
 
-:- load_foreign_files([sys], [], init_sys).
+:- load_foreign_files([], ['YAPsys'], init_sys).
 
 :- dynamic tmp_file_sequence_counter/1.
 
@@ -101,7 +99,7 @@ on local time. This function uses the WIN32
 
 ```
 									?- datime(X).
-
+4
 X = datime(2001,5,28,15,29,46) ?
 ```
 
@@ -142,7 +140,7 @@ check_int(I, Inp) :-
 
 /** @pred delete_file(+ _File_,+ _Opts_)
 
-The `delete_file/2` procedure removes file  _File_ according to
+The delete_file/2 procedure removes file  _File_ according to
 options  _Opts_. These options are `directory` if one should
 remove directories, `recursive` if one should remove directories
 recursively, and `ignore` if errors are not to be reported.
@@ -453,7 +451,7 @@ shell :-
 	get_shell0(FullCommand),
 	exec_command(FullCommand, 0, 1, 2, PID, Error),
 	handle_system_internal(Error, off, G),
-	wait(PID, _Status, Error, Id),
+	plwait(PID, _Status, Error, Id),
 	handle_system_internal(Error, got(FullCommand, Id), off, G).
 
 /** @pred shell(+ _Command_)
@@ -540,7 +538,7 @@ Interface to `system`: execute command  _Command_ and unify
  _Res_ with the result.
 
 
-n*/
+*/
 system(Command, Status) :-
 	G = system(Command, Status),
 	check_command(Command, G),
@@ -641,6 +639,20 @@ tmpnam(X) :-
 	tmpnam(X, Error),
 	handle_system_internal(Error, off, tmpnam(X)).
 
+/** @pred temp_file(+Prefix, - _File_)q
+
+Generate a file with unique path `/tmp/YAP_Prefix_tmp_Name. `Prefix`
+is an atom or string and `File` should be unique */
+
+temp_file(Prefix, Path):-
+  temp_file(Prefix, Path, Error),
+  handle_system_internal(Error, off,temp_file(Prefix, Path) ).
+
+tmp_file(Prefix, Path):-
+  temp_file(Prefix, Path, Error),
+  handle_system_internal(Error, off,tmp_file(Prefix, Path) ).
+
+
 /** @pred tmpdir(- _File_)
 
 @author Theo
@@ -648,7 +660,6 @@ tmpnam(X) :-
 Generate a directory for temporary files; the path seperator is used
 to replace the c predicate dir_separator which is not OS aware
 */
-
 tmpdir(TmpDir):-
   tmpdir(Dir, Error),
   handle_system_internal(Error, off, tmpdir(Dir)),
@@ -683,7 +694,6 @@ _New_. This predicate uses the `C` built-in function `copy`.
 
 
 */
-/*
 copy_file(F0, F) :-
     absolute_file_name(F0,Inp,[]),
     absolute_file_name(F,O, []),
@@ -697,24 +707,10 @@ copy_file(F0, F) :-
     ),
     copy_file(Inp, Out, Error),
     handle_system_internal(Error, off, copy_file(F0, F)).
-*/
-/** @pred directory_files(+ _Dir_,+ _List_)
 
 
-Given a directory  _Dir_,  directory_files/2 procedures a
-listing of all fniles and directories in the directory:
 
-```
-    ?- directory_files('.',L), writeq(L).
-['Makefile.~1~','sys.so','Makefile','sys.o',x,..,'.']
-```
-The predicates uses the `dirent` family of routines in Unix
-environments, and `findfirst` in WIN32 through the system_library buil
-
-*/
-
-:- meta_predicate directory_map(+,1,-),
-	rb_apply(+,+,2,-).
+:- meta_predicate directory_map(+,0).
 
 /** @pred directory_map(+ _Dir_, 1:_P_)
 

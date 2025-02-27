@@ -1,33 +1,29 @@
 site_name: YAP Prolog Reference Manual
-site_url: https://www.dcc.fc.up.pt/
-use_directory_urls: true
+site_url: https://www.dcc.fc.up.pt/YAP
+use_directory_urls: false
 theme:
-  name: 'material'
-  features:
-    - navigation.instant
-    - navigation.trackbig
-    - navigation.sections
-    - navigation.expand
-    - navigation.tabs
-    - toc.integrate  
-    - header.autohide  
-    - logo: favicon.ico
-    - content.tooltips
-extra_javascript:
-    - javascripts/highlight.min.js
+  name: 'readthedocs'
+  highlightjs: true
+  hljs_languages:
+    - prolog
+  logo: 'images/favicon.ico'
 plugins:
   - search
-  - awesome-pages
-  - mkdocs-jupyter  
 markdown_extensions:
   - admonition
   - attr_list
   - md_in_html
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.superfences
-  - codehilite
-  - fenced_code
+  - toc:
+      permalink: true
+nav:
+   - Home: index.md
+   - INSTALL: INSTALL.md
+   - Calling YAP: CALLING_YAP.md
+   - Core Built-ins: group__Builtins.md
+   - Programming: group__YAPProgramming.md
+   - Extensions: group__YapExtensions.md
+   - Library: group__YAPLibrary.md
+   - Available Packages: group__YAPPackages.md
+   - Foreign Language Interface : group__YAPAPI.md
+
 

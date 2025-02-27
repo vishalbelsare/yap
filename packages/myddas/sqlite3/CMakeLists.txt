@@ -1,5 +1,6 @@
 
 
+
   if (WITH_SQLITE3)
   set (SQLITE_TEST
     sqlitest.yap)
@@ -7,7 +8,7 @@
   set (SQLITE_DB    chinook.db)
 
   set( YAPSQLITE3_SOURCES
-    myddas_sqlite3.c
+    myddas_sqlite3.c src/sqlite3.c
     )
 
   message( "   * Sqlite3 Data-Base (http://www.sqlite3.org), distributed with MYDDAS" )
@@ -55,7 +56,7 @@ message("ql ${EMBEDDED_SQLITE3}")
     add_library(  YAPsqlite3 SHARED
       ${YAPSQLITE3_SOURCES})
 
-    target_link_libraries(YAPsqlite3 libYap )
+    target_link_libraries(YAPsqlite3 libYap YAPmyddas)
 
     set_target_properties(YAPsqlite3
       PROPERTIES

@@ -1,3 +1,4 @@
+
 /*************************************************************************
 *									 *
 *	 YAP Prolog 							 *
@@ -38,62 +39,6 @@
 %
 % can only do as goal in YAP mode.
 %
-/** @pred  dynamic( + _P_ )
-
-
-Declares predicate  _P_ or list of predicates [ _P1_,..., _Pn_]
-as a dynamic predicate.  _P_ must be written as a predicate indicator, that is in form
- _Name/Arity_ or _Module:Name/Arity_.
-
-```
-:- dynamic god/1.
-```
-
-
-a more convenient form can be used:
-
-```
-:- dynamic son/3, father/2, mother/2.
-```
-
-or, equivalently,
-
-```
-:- dynamic [son/3, father/2, mother/2].
-```
-
-Note:
-
-a predicate is assumed to be dynamic when
-asserted before being defined.
-
-
-*/
-dynamic(X) :-
-	current_prolog_flag(language, yap), !,
-  '$current_module'(M),
-	'$dynamic'(X, M).
-dynamic(X) :-
-	throw_error(context_error(dynamic(X),declaration),query).
-
-'$dynamic'(X,M) :- var(X), !,
-	throw_error(instantiation_error,dynamic(M:X)).
-'$dynamic'(X,M) :- var(M), !,
-	throw_error(instantiation_error,dynamic(M:X)).
-'$dynamic'(Mod:Spec,_) :- !,
-	'$dynamic'(Spec,Mod).
-'$dynamic'([], _) :- !.
-'$dynamic'([H|L], M) :- !, '$dynamic'(H, M), '$dynamic'(L, M).
-'$dynamic'((A,B),M) :- !, '$dynamic'(A,M), '$dynamic'(B,M).
-'$dynamic'(A//N,Mod) :- integer(N), !,
-	N1 is N+2,
-	'$dynamic'(A/N1,Mod).
-'$dynamic'(A/N,Mod) :-
-  functor(G, A, N),
-  '$mk_dynamic'(Mod:G),
-!.
-
-
 
 
 
@@ -116,14 +61,17 @@ meta_predicate(P) :-
 	'$yap_strip_module'( M:D, M1, P),
 	P\==D,
 	!,
-	'$meta_predicate'( P, M1 ).
-'$meta_predicate'( P, M ) :-
+	'$add_meta_predicate'( P, M1 ).
+'$meta_predicate'( P, M ) :-  
+    '$add_meta_predicate'( P, M ).
+
+
+'$add_meta_predicate'( P, M ) :-
     '$new_meta_pred'(P, M),
-    recordz('$m' , meta_predicate(M,P),_).
-'$meta_predicate'( _D, _M ).
+    recordz('$m' , meta_predicate(M,P),_).				
 
 
-:- meta_predicate([(0,0)]).
+:- '$add_meta_predicate'( (0,0), prolog ).
 
 
 :- '$meta_predicate'((
@@ -165,12 +113,12 @@ meta_predicate(P) :-
 	call_residue(0,?),
 	call_residue_vars(0,?),
 	call_shared_object_function(:,+),
-catch(0,?,0),
+	catch(0,?,0),
 	clause(:,?),
 	clause(:,?,?),
-			      current_predicate(:),
-			      current_predicate(?,:),
-			     depth_bound_call(0,+),
+	current_predicate(:),
+	current_predicate(?,:),
+	depth_bound_call(0,+),
 	findall(?,0,-),
 	findall(?,0,-,?),
 	forall(0,0),
@@ -184,6 +132,7 @@ catch(0,?,0),
 	incore(0),
 	initialization(0),
 	initialization(0,+),
+        load_files(:,+),
 	nospy(:),
         not(0),
         notrace(0),
@@ -280,7 +229,9 @@ Since YAP4.3.0 multifile procedures can be static or dynamic.
 **/
 multifile(P) :-
     strip_module(P, OM, Pred),
-	'$multifile'(Pred, OM).
+    '$multifile'(Pred, OM),
+    fail.
+ 
 
 '$multifile'(V, _) :-
     var(V),
@@ -288,8 +239,11 @@ multifile(P) :-
     throw_error(instantiation_error,multifile(V)).
 '$multifile'((X,Y), M) :-
     !,
-    '$multifile'(X, M),
-    '$multifile'(Y, M).
+    (
+    '$multifile'(X, M)
+    ;
+    '$multifile'(Y, M)
+    ).
 '$multifile'(Mod:PredSpec, _) :-
     !,
 	'$multifile'(PredSpec, Mod).
@@ -300,46 +254,20 @@ multifile(P) :-
 '$multifile'(N/A, M) :-
     !,
     functor(S,N,A),
-	'$new_multifile'(S,M),
-	fail.
+	'$new_multifile'(S,M).
 '$multifile'(N/A, M) :-
     functor(S,N,A),
 	'$new_multifile'(S, M), !.
+'$multifile'([], _M) :- !.
 '$multifile'([H|T], M) :- !,
-	'$multifile'(H,M),
-	'$multifile'(T,M).
+	(
+	'$multifile'(H,M)
+	;
+	'$multifile'(T,M)
+	).
 '$multifile'(P, M) :-
 	throw_error(type_error(predicate_indicator,P),multifile(M:P)).
 
-
-
-%
-% did we declare multifile properly?
-%
-'$check_multifile_pred'(Hd, M, _) :-
-      ( source_location(F, _)
-        ->
-          true
-        ;
-          F = user_input
-        ),
-	functor(Hd,Na,Ar),
-	recorded('$multifile_defs','$defined'(F,Na,Ar,M),_), !.
-% oops, we did not.
-'$check_multifile_pred'(Hd, M, Fl) :-
-	% so this is not a multi-file predicate any longer.
-	functor(Hd,Na,Ar),
-	NFl is \(0x20000000) /\ Fl,
-	'$predicate_flags'(Hd,M,Fl,NFl),
-	'$warn_mfile'(Na,Ar).
-
-'$warn_mfile'(F,A) :-
-	write(user_error,'% Warning: predicate '),
-	write(user_error,F/A), write(user_error,' was a multifile predicate '),
-	write(user_error,' (line '),
-	'$start_line'(LN), write(user_error,LN),
-	write(user_error,')'),
-	nl(user_error).
 
 :- multifile 
        '$inline'/2,

@@ -58,10 +58,8 @@ static char SccsId[] = "%W% %G%";
 #include <readline/history.h>
 #include <readline/readline.h>
 
-static int ReadlineGetc(int);
-
 static const char *history_file;
-
+\
 #define READLINE_OUT_BUF_MAX 256
 
 static Int usable_readline(USES_REGS1) {
@@ -260,22 +258,18 @@ static char **prolog_completion(const char *text, int start, int end) {
 }
 
 void Yap_ReadlineFlush(int sno) {
-  if (GLOBAL_Flags && trueGlobalPrologFlag(READLINE_FLAG)) {
-    if (GLOBAL_Stream[sno].status & Tty_Stream_f &&
-        GLOBAL_Stream[sno].status & Output_Stream_f) {
-      rl_redisplay();
-    }
-  }
+  Yap_readline_clear_pending_input(GLOBAL_Stream+sno);
+  return rl_redisplay();
 }
 
 bool Yap_readline_clear_pending_input(StreamDesc *s) {
-  if (GLOBAL_Flags && trueGlobalPrologFlag(READLINE_FLAG)) {
-#if HAVE_RL_CLEAR_PENDING_INPUT
-    //rl_clear_pending_input();
+#if 1 //HAVE_RL_CLEAR_PENDING_INPUT
+  rl_clear_pending_input();
 #endif
-    if (s->u.irl.buf) {
-      free((void *)s->u.irl.buf);
-    }
+  if (GLOBAL_Flags && trueGlobalPrologFlag(READLINE_FLAG)) {
+    const unsigned char *myrl_line = s->u.irl.buf;
+    if (myrl_line)
+      free((void *)myrl_line);
     s->u.irl.ptr = s->u.irl.buf = NULL;
     return true;
   }
@@ -366,23 +360,17 @@ static bool getLine(int inp) {
 
   EOF must be handled by resetting the file.
 */
-static int ReadlineGetc(int sno) {
+int ReadlineGetc(int sno) {
     CACHE_REGS
   StreamDesc *s = &GLOBAL_Stream[sno];
   int ch = 0;
   bool fetch = (s->u.irl.buf == NULL);
 
   if (fetch) {
-    // readline disabled.
-    if (!GLOBAL_Flags || falseGlobalPrologFlag(READLINE_FLAG)) {
-      Yap_DefaultStreamOps(s);
-      return s->stream_getc(sno);
-    }
-
     /* window of vulnerability opened */
     LOCAL_PrologMode |= ConsoleGetcMode;
     if (!getLine(sno)) {
-      return console_post_process_eof(s);
+      return post_process_eof(s);
     }
   }
   const unsigned char *ttyptr = s->u.irl.ptr, *myrl_line = s->u.irl.buf;
@@ -449,8 +437,7 @@ int Yap_ReadlineForSIGINT(void) {
     myrl_line = (const unsigned char *)readline("RK Action (h for help): ");
     while (!myrl_line || myrl_line[0] == '\0') {};
     ch = myrl_line[0];
-    fprintf(stderr,"OK %c\n",ch);
-      return ch;
+    return ch;
     }
 
 #else

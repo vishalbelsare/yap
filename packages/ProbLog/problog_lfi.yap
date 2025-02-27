@@ -205,6 +205,7 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+:- set_prolog_flag(multiline_quoted_text, true).
 :-source.
 :- module(problog_lfi,[do_learning/1,
 		       do_learning/2,
@@ -216,7 +217,7 @@
 
 % switch on all the checks to reduce bug searching time
 :- style_check(all).
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 
 % load modules from the YAP library
 :- use_module(library(lists),[member/2,nth1/3,sum_list/2,min_list/2,max_list/2]).
@@ -232,6 +233,7 @@
 :- use_module('problog/utils_learning').
 :- use_module('problog/utils').
 :- use_module('problog/ad_converter').
+:- use_module('problog/pbmath').
 
 
 % used to indicate the state of the system
@@ -239,11 +241,13 @@
 :- dynamic(current_iteration/1).
 :- dynamic(query_all_scripts/2).
 :- dynamic(last_llh/1).
+:- dynamic(test_set_cluster_list/1).
+:- dynamic(training_set_cluster_list/1).
 
 :- discontiguous(user:myclause/1).
 :- discontiguous(user:myclause/2).
 :- discontiguous(user:known/3).
-:- discontiguous(user:train_example/1).
+:- discontiguous(user:example/1).
 :- discontiguous(user:test_example/1).
 
 :- multifile(completion:bdd_cluster/2).
@@ -389,7 +393,7 @@ do_learning_intern(Iterations,Epsilon) :-
 	logger_write_data,
 	RemainingIterations is Iterations-1,
 	!,
-	garbage_collect,
+	%garbage_collect,
 	!,
 
 	(
@@ -452,7 +456,7 @@ init_learning :-
 	 true
 	),
 
-	succeeds_n_times(user:train_example(_),TrainingExampleCount),
+	succeeds_n_times(user:example(_),TrainingExampleCount),
 	format_learning(3,'~q training example(s)~n',[TrainingExampleCount]),
 
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -510,7 +514,7 @@ check_theory :-
 	 ),
 
 	 (
-	  (current_predicate(user:train_example/1),user:train_example(_))
+	  (current_predicate(user:example/1),user:example(_))
 	 ->
 	  true;
 	  (
@@ -522,7 +526,7 @@ check_theory :-
 	 ),
 
 	 (
-	  ( current_predicate(user:test_example/1),user:train_example(ID), user:test_example(ID) )
+	  ( current_predicate(user:test_example/1),user:example(ID), user:test_example(ID) )
 	 ->
 	  (
 	   format(user_error,'===============================================================~n',[]),
@@ -538,7 +542,7 @@ check_theory :-
 	 ),
 
 	 (
-	  (current_predicate(user:known/3),user:train_example(ID2),user:known(ID2,_,_))
+	  (current_predicate(user:known/3),user:example(ID2),user:known(ID2,_,_))
 	 ->
 	  true;
 	  (
@@ -609,7 +613,7 @@ copy_back_fact_probabilities :-
 init_queries :-
 	problog_flag(cluster_bdds,Cluster_BDDs),
 	format_learning(2,'Build BDDs for examples~n',[]),
-	forall(user:train_example(Training_ID),
+	forall(user:example(Training_ID),
 	       (
 		   format_learning(3,'training example ~q: ',[Training_ID]),
 		init_one_query(Training_ID,training)
@@ -645,7 +649,7 @@ init_queries :-
 					  ), Test_Set_Cluster_List),
 
 	  findall( a(QueryID,ClusterID,1), (
-					   user:train_example(QueryID),
+					   user:example(QueryID),
 					   bdd_cluster(QueryID,ClusterIDs),
 					   member(ClusterID,ClusterIDs)
 					  ), Training_Set_Cluster_List)
@@ -672,9 +676,7 @@ init_one_query(QueryID,_Query_Type) :-
 
 init_one_query(QueryID,Query_Type) :-
 	once(propagate_evidence(QueryID,Query_Type)),
-	format_learning(3,'~n',[]),
-	garbage_collect_atoms,
-	garbage_collect.
+	format_learning(3,'~n',[]).
 
 
 create_test_query_cluster_list(L2) :-
@@ -707,7 +709,7 @@ calc_all_md5([a(QueryID,ClusterID)|T],[a(QueryID,ClusterID,MD5)|T2]) :-
 
 create_training_query_cluster_list(L2) :-
 	findall( a(QueryID,ClusterID), (
-					 user:train_example(QueryID),
+					 user:example(QueryID),
 					 bdd_cluster(QueryID,ClusterIDs),
 					 member(ClusterID,ClusterIDs)
 				      ), AllCluster),
@@ -969,7 +971,7 @@ my_load_intern_allinone(X,Handle,QueryID,Count,Old_BDD_Probability,BDD_Probabili
 %========================================================================
 
 my_reset_static_array(Name) :-
-  %%% DELETE ME AFTER VITOR FIXED HIS BUG
+    %%% DELETE ME AFTER VITOR FIXED HIS BUG
         static_array_properties(Name,Size,Type),
 	LastPos is Size-1,
 	(
@@ -986,8 +988,8 @@ my_reset_static_array(Name) :-
 
 em_one_iteration :-
 	write_probabilities_file,
-	my_reset_static_array(factprob_temp),
-	my_reset_static_array(factusage),
+	reset_static_array(factprob_temp),
+	reset_static_array(factusage),
 
 	current_iteration(Iteration),
 	create_training_predictions_file_name(Iteration,Name),
@@ -1101,6 +1103,7 @@ evaluate_bdds([H|T],Handle,Parallel_Processes,Type,Symbol,OldLLH,LLH) :-
 	logger_start_timer(bdd_evaluation),
 	once(evaluate_bdds_start(ForNow,Type,ForNow_Jobs)),
 	once(evaluate_bdds_stop(ForNow_Jobs,Handle,Symbol,OldLLH,NewLLH)),
+	writeln(evaluate_bdds_stop(ForNow_Jobs,Handle,Symbol,OldLLH,NewLLH)),
 	logger_stop_timer(bdd_evaluation),
 	evaluate_bdds(Later,Handle,Parallel_Processes,Type,Symbol,NewLLH,LLH).
 

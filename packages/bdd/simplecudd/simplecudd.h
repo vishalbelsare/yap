@@ -187,15 +187,15 @@
 \******************************************************************************/
 
 #include "YapInterface.h"
-#include "cudd_config.h"
+#include "cudd/dddmp.h"
+#include "cudd/cudd.h"
+#include "cudd/dddmpInt.h"
+#include "cudd/cuddInt.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#include "cuddSupport.h"
-
 
 #include "general.h"
 
