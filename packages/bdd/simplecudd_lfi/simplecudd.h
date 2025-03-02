@@ -185,7 +185,6 @@
 \******************************************************************************/
 
 #include "YapInterface.h"
-#include "cudd_config.h"
 #include "pqueue.h"
 #include <math.h>
 #include <stdio.h>
@@ -193,7 +192,11 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <cuddSupport.h>
+#include <assert.h>
+#include <cudd/dddmp.h>
+#include <cudd/cudd.h>
+#include <cudd/dddmpInt.h>
+#include <cudd/cuddInt.h>
 
 #ifdef VERSION
 #undef VERSION

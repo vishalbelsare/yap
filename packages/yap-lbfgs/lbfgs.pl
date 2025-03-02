@@ -20,12 +20,12 @@
 
 
 
-:- module(lbfgs,[lbfgs_initialize/2,
-		 lbfgs_initialize/4,
+:- module(lbfgs,[lbfgs_allocate/2,
+		 lbfgs_allocate/2 as lbfgs_initialize,
+	%	 lbfgs_initialize/4,
 		 lbfgs_run/2,
 		 lbfgs_fx/1,
 		 lbfgs_finalize/1,
-		 lbfgs_grab/2 as lbfgs_allocate,
 		 lbfgs_free/1,
 		 lbfgs_progress_done/1,
 		 lbfgs_set_parameter/2,
@@ -33,13 +33,13 @@
 		 lbfgs_parameters/0]).
 
 % switch on all the checks to reduce bug searching time
-% :- yap_flag(unknown,error).
+% :- set_prolog_flag(unknown,error).
 % :- style_check(single_var).
 
 /**
 
-@defgroup YAP_YAP_YAP-LBFGS Interface to LibLBFGS
-@ingroup YAP_YAP_packages
+@defgroup YAP_LBFGS Interface to LibLBFGS
+@ingroup YAPPackages
 
 @short What is YAP-LBFGS? YAP-LBFGS is an interface to call [libLBFG](http://www.chokkan.org/software/liblbfgs/), from within
 YAP. libLBFGS is a C library for Limited-memory
@@ -154,7 +154,7 @@ yes
 
 */
 
-:- load_foreign_files(['libLBFGS'],[],init_lbfgs_predicates).
+:- load_foreign_files([],['YAPLBFGS'],init_lbfgs_predicates).
 
 /** @pred lbfgs_initialize(+N, -SolverInfo, -Thread),
 
@@ -177,7 +177,6 @@ lbfgs_allocate(N,X) :-
 Clean up the memory.
 */
 lbfgs_progress_done(_).
-
 /** @pred  lbfgs_finalize(+State)
 
 Clean up the memory.
@@ -195,12 +194,12 @@ lbfgs_run(N,X) :-
 
 
 
-/** @pred  lbfgs_parameters/11
+/** @pred  lbfgs_parameters
 Prints a table with the current parameters. See the <a href="http://www.chokkan.org/software/liblbfgs/structlbfgs__parameter__t.html#_details">documentation
 of libLBFGS</a> for the meaning of each parameter.
 
 ```
-   ?- lbfgs_parameters(State).
+   ?- lbfgs_parameters.
 ==========================================================================================
 Type      Name               Value          Description
 ==========================================================================================
@@ -209,7 +208,7 @@ float     epsilon            1e-05          Epsilon for convergence test.
 int       past               0              Distance for delta-based convergence test.
 float     delta              1e-05          Delta for convergence test.
 int       max_iterations     0              The maximum number of iterations
-int       linesearch         0              The line search algorithm.
+int       linesearch             0              The line search algorithm.
 int       max_linesearch     40             The maximum number of trials for the line search.
 float     min_step           1e-20          The minimum step of the line search routine.
 float     max_step           1e+20          The maximum step of the line search.
@@ -222,7 +221,7 @@ int       orthantwise_end    -1             End index for computing the L1 norm 
 ==========================================================================================
 ```
 */
-lbfgs_parameters  :-
+lbfgs_parameters :-
 	lbfgs_get_parameter(m,M ),
 	lbfgs_get_parameter(epsilon,Epsilon ),
 	lbfgs_get_parameter(past,Past ),

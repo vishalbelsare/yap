@@ -191,6 +191,10 @@ variable=value
 */
 
 #include "config.h"
+#include "dddmp.h"
+#include "cudd.h"
+//#include "cudd/dddmpInt.h"
+#include "cuddInt.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -199,8 +203,6 @@ variable=value
 #include <stdio.h>
 #include <unistd.h>
 #include "general.h"
-
-#include <cuddSupport.h>
 
 #define IsHigh(manager, node) HIGH(manager) == node
 #define IsLow(manager, node) LOW(manager) == node

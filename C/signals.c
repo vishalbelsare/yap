@@ -57,10 +57,11 @@ static char SccsId[] = "%W% %G%";
 #endif
 
 
+static yap_signals ProcessSIGINT(void);
+
+
 bool Yap_DisableInterrupts(int wid) {
     CACHE_REGS
-  LOCAL_InterruptsDisabled = true;
-  LOCAL_debugger_state[DEBUG_DEBUG] =     TermFalse;
     LOCAL_InterruptsDisabled = true;
   YAPEnterCriticalSection();
   return true;
@@ -68,11 +69,23 @@ bool Yap_DisableInterrupts(int wid) {
 
 bool Yap_EnableInterrupts(int wid ) {
     CACHE_REGS
-  LOCAL_debugger_state[DEBUG_DEBUG]= getAtomicLocalPrologFlag(DEBUG_FLAG);
   LOCAL_InterruptsDisabled = false;
+  if (LOCAL_Signals) {
+    if (LOCAL_Signals == SIGINT) {
+      yap_signals sig = ProcessSIGINT();
+      if (sig)
+	Yap_signal(sig);
+      else {
+	YAPLeaveCriticalSection();
+	return true;
+      }
+    }
+    CreepFlag = Unsigned(LCL0);
+  }
   YAPLeaveCriticalSection();
   return true;
 }
+
 
 
 /*
@@ -113,10 +126,8 @@ static bool InteractSIGINT(int ch USES_REGS) {
     return true;
  case 't':
    LOCAL_Flags[DEBUG_FLAG].at = TermTrue;
-   LOCAL_debugger_state[DEBUG_CREEP_LEAP_OR_ZIP] = TermCreep;
-   LOCAL_debugger_state[DEBUG_SPY] = TermTrue;
-   LOCAL_debugger_state[DEBUG_TRACE] = TermTrue;
-   LOCAL_debugger_state[DEBUG_DEBUG] = TermTrue;
+   LOCAL_Flags[TRACE_FLAG].at = TermTrue;
+   Yap_SetGlobalVal(AtomCreep,TermCreep);
    /* start tracing */
     Yap_signal(YAP_CREEP_SIGNAL);
     break;
@@ -128,7 +139,7 @@ static bool InteractSIGINT(int ch USES_REGS) {
 #endif
   case 's':
      Yap_signal( YAP_STATISTICS_SIGNAL);
-    return true;
+    return false;
   case EOF:
     clearerr(stdin);
     return false;
@@ -177,8 +188,6 @@ static yap_signals ProcessSIGINT(void) {
   CACHE_REGS
     int ch;
   yap_signals out;
-  printf("handlr called\n");
-    Yap_EnableInterrupts(worker_id);
 #if _WIN32
   if (!_isatty(0)) {
     return YAP_INT_SIGNAL;
@@ -189,90 +198,64 @@ static yap_signals ProcessSIGINT(void) {
   }
 #endif 
   LOCAL_PrologMode |= AsyncIntMode;
-  //Yap_do_low_level_trace=1;
-  ch = Yap_GetCharForSIGINT();
+  //Yap_hdo_low_level_trace=1;
 #if 0
       fprintf(stderr,"ch=%c %d %lx\n",ch,LOCAL_InterruptsDisabled,LOCAL_Signals);
 #endif
-      out = false;
+      out = 0;
       while (!out)
 	{
+	  ch = Yap_GetCharForSIGINT();
 	  out = InteractSIGINT(ch PASS_REGS);
 	}
   LOCAL_PrologMode &= ~AsyncIntMode;
   if (  LOCAL_PrologMode & ConsoleGetcMode) {
-      LOCAL_PrologMode &= ~ConsoleGetcMode;
-      Yap_ThrowError(INTERRUPT_EVENT,MkIntegerTerm(ch       ), NULL);
+    LOCAL_PrologMode &= ~ConsoleGetcMode;
+    //     Yap_ThrowError(INTERRUPT_EVENT,MkIntegerTerm(ch       ), NULL);
   }
   return out;
 }
 
 
 inline static void do_signal(int wid, yap_signals sig USES_REGS) {
+  __atomic_fetch_or(&REMOTE(wid)->Signals, SIGNAL_TO_BIT(sig), __ATOMIC_SEQ_CST);
 #if THREADS
-    __sync_fetch_and_or(&REMOTE(wid)->Signals, SIGNAL_TO_BIT(sig));
   if (!REMOTE_InterruptsDisabled(wid)) {
     REMOTE_ThreadHandle(wid).current_yaam_regs->CreepFlag_ =
         Unsigned(REMOTE_ThreadHandle(wid).current_yaam_regs->LCL0_);
   }
 #else
-  LOCAL_Signals &= ~SIGNAL_TO_BIT(sig);
   if (!LOCAL_InterruptsDisabled) {
-      if (sig == SIGINT) {
-	sig = ProcessSIGINT();
-      }
-      if (sig) {
-        LOCAL_Signals |= SIGNAL_TO_BIT(sig);
-        CreepFlag = Unsigned(LCL0);
-      }
-    }
-#endif
+    CreepFlag = (CELL)LCL0;
+
+  }
+  #endif
 }
 
 
-inline static bool get_signal(yap_signals sig USES_REGS) {
-#if THREADS
+inline   static bool get_signal(yap_signals sig USES_REGS) {
   uint64_t old;
-
-  // first, clear the Creep Flag, now if someone sets it it is their problem
-  CalculateStackGap(PASS_REGS1);
-  // reset the flag
-  if ((old = __sync_fetch_and_and(&LOCAL_Signals, ~SIGNAL_TO_BIT(sig))) !=
-      SIGNAL_TO_BIT(sig)) {
-    if (!LOCAL_InterruptsDisabled && LOCAL_Signals != 0) {
-      CreepFlag = (CELL)LCL0;
-    }
-    if (!(old & SIGNAL_TO_BIT(sig))) {
-      // not there?
-      return FALSE;
-    }
-    // more likely case, we have other interrupts.
-    return TRUE;
-  }
+  // reset tbbbbbbbbbbbbbhe flag
+  old = __atomic_fetch_and(&LOCAL_Signals, ~SIGNAL_TO_BIT(sig), __ATOMIC_SEQ_CST);
   // success, we are good
-  return TRUE;
-// should we set the flag?
-#else
-  if (LOCAL_Signals & SIGNAL_TO_BIT(sig)) {
-    LOCAL_Signals &= ~SIGNAL_TO_BIT(sig);
-    if (!LOCAL_InterruptsDisabled && LOCAL_Signals != 0) {
+  if ( (old &SIGNAL_TO_BIT(sig) )!= 0) {
+    if (!LOCAL_InterruptsDisabled) {
       CreepFlag = (CELL)LCL0;
-    } else {
+      // first, clear the Creep Flag, now if someone sets it it is their problem
       CalculateStackGap(PASS_REGS1);
     }
-    return TRUE;
-  } else {
-    return FALSE;
+    return true;
   }
-#endif
+  return false;
+// should we set the flag?
 }
+
 /**
   Function called to handle delayed interrupts.
  */
 bool Yap_HandleSIGINT(void) {
   CACHE_REGS
   yap_signals sig;
-
     if ((sig = ProcessSIGINT()) != YAP_NO_SIGNAL) {
       printf("sig=%d\n", sig);
 	     
@@ -297,11 +280,11 @@ void Yap_external_signal(int wid, yap_signals sig) {
   REGSTORE *regcache = REMOTE_ThreadHandle(wid).current_yaam_regs;
 #endif
   do_signal(wid, sig PASS_REGS);
-  LOCAL_PrologMode &= ~InterruptMode;
 }
 
 int Yap_get_signal__(yap_signals sig USES_REGS) {
-  return get_signal(sig PASS_REGS);
+  int rc = get_signal(sig PASS_REGS);
+  return rc;
 }
 
 // the caller holds the lock.
@@ -443,7 +426,7 @@ static Int first_signal(USES_REGS1) {
 	LOCAL_PrologMode |= AbortMode;
 	return -1;
       } else {
-	Yap_Error(ABORT_EVENT, TermNil, "abort from console");
+	Yap_ThrowError(ABORT_EVENT, TermNil, "abort from console");
       }
       Yap_RestartYap(1);
       return FALSE;

@@ -2,7 +2,7 @@
 
 @file C/args.c
 
-@aingroup PredicateArgsC How to access a list of arguments from C
+@defgroup PredicateArgsC How to access a list of arguments from C
 @ingroup YAPImplementation
 
 @brief Lists of arguments in C
@@ -10,6 +10,7 @@
 @{
 
   */
+
 #include "Yap.h"
 #include "Yatom.h"
 #include "amiops.h"
@@ -23,29 +24,18 @@
  * @return all arguments, some of them set, some of them not.
  */
 
-static xarg *matchKey(Atom key, xarg *e0, int n, const param_t *def) {
-  int i;
-  for (i = 0; i < n; i++) {
-    if (!strcmp((char *)def->name, (char *)RepAtom(key)->StrOfAE)) {
-      return e0;
-    }
-    def++;
-    e0++;
-  }
-  return NULL;
-}
-
 /**
  * Returns the index of an argument key, or -1 if not found.
  *
  */
-int Yap_ArgKey(Atom key, const param_t *def, int n) {
+int Yap_ArgKey(Atom key, const param_t def[], int n) {
   int i;
-  for (i = 0; i < n; i++) {
-    if (!strcmp((char *)def->name, (char *)RepAtom(key)->StrOfAE)) {
+  for (i = 0; i <n ; i++) {
+    if (!def[i].name)
+      return -1;
+    if (!strcmp((char *)(def[i].name), (char *)RepAtom(key)->StrOfAE)) {
       return i;
     }
-    def++;
   }
   return -1;
 }
@@ -54,7 +44,7 @@ int Yap_ArgKey(Atom key, const param_t *def, int n) {
 
 
 xarg *Yap_ArgListToVector__(const char *file, const char *function, int lineno,
-                            Term listl, const param_t *def, int n,
+                            Term listl, const param_t def[], int n,
 			    xarg *a,
                             yap_error_number err) {
   CACHE_REGS
@@ -66,75 +56,104 @@ xarg *Yap_ArgListToVector__(const char *file, const char *function, int lineno,
    if (!a)
     a = calloc(n, sizeof(xarg));
 
-  if (!IsPairTerm(listl) && listl != TermNil) {
-    if (IsAtomTerm(listl)) {
-      xarg *na = matchKey(AtomOfTerm(listl), a, n, def);
-      if (!na) {
-        Yap_ThrowError__(file, function, lineno, err, listl, "match key");
-      }
-    } else if (IsApplTerm(listl)) {
-      Functor f = FunctorOfTerm(listl);
-      if (IsExtensionFunctor(f)) {
-        Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
-      }
-      arity_t arity = ArityOfFunctor(f);
-      if (arity != 1) {
-        Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "bad arity");
-      }
-      xarg *na = matchKey(NameOfFunctor(f), a, n, def);
-      if (!na) {
-        Yap_ThrowError__(file, function, lineno, err, listl, "no match");
-      }
-      na->used = true;
-      na->tvalue = ArgOfTerm(1, listl);
-    } else {
-      Yap_ThrowError__(file, function, lineno, TYPE_ERROR_ATOM, listl, "not atom");
+     if (IsAtomTerm(listl))
+       {
+	 if (listl !=  TermNil) {
+	   listl = MkPairTerm(listl,TermNil);
+	 }
+       }
+     else if  (IsApplTerm(listl)) {
+       Term hd = listl;
+	 Functor f = FunctorOfTerm(hd);
+	 if (IsExtensionFunctor(f)) {
+      Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
+       return NULL;
+ 	 }
+	 arity_t arity = ArityOfFunctor(f);
+	 if (arity != 1) {
+      Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
+       return NULL;
+     	 }
+	Atom at =	 NameOfFunctor(f);    
+         int pos =Yap_ArgKey(at, def, n);
+     if (pos < 0) {
+       Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
+       return NULL;
+     }
+       if (!a[pos].used) {
+	 if (IsApplTerm(hd)) {
+	   a[pos].tvalue = ArgOfTerm(1, hd);
+	 } else {
+	   a[pos].tvalue = TermNil;
+	 };
+	 a[pos].used = true;
+	 a[pos].source = hd;
+       }
+       return a;
+     }
+     else if (!IsPairTerm(listl)) {
+       Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
+       return NULL;
     }
-    listl = MkPairTerm(listl, TermNil);
-  }
-  while (IsPairTerm(listl)) {
-    Term hd = HeadOfTerm(listl);
-    listl = TailOfTerm(listl);
-    if (IsVarTerm(hd)) {
-      Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, hd, "sub-element");
+     Term *tailp;
+     Yap_SkipList(&listl, &tailp);
+     if (IsVarTerm(*tailp))  {
+       Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, listl,
+			"tyring to open    listl = [...|_]");
+       return NULL;
+     }
+     if (*tailp != TermNil) {
+       Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "callable");
+       return NULL;
     }
-    if (IsVarTerm(listl)) {
-      Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, listl, "sub-list");
+     if (!a) {
+       a = calloc(n, sizeof(xarg));
+     }
+     
+     while (listl!=TermNil) {
+       Term  hd = HeadOfTerm(listl);
+       Atom at;
+      if (IsVarTerm(hd))  {
+	 Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, listl,
+			  "argument unbound");
+	 return NULL;
+       } else if (IsApplTerm(hd)) {
+	
+	 Functor f = FunctorOfTerm(hd);
+	 if (IsExtensionFunctor(f)) {
+           Yap_ThrowError__(file, function, lineno, err, hd, "bad compound");
+	   return NULL;
+	 }
+	 arity_t arity = ArityOfFunctor(f);
+	 if (arity != 1) {
+           Yap_ThrowError__(file, function, lineno, err, hd,
+                            "high arity");
+	 }
+	 at =	 NameOfFunctor(f);    
+       } else if (IsAtomTerm(hd)) {
+	 at = AtomOfTerm(hd);
+       } else {
+          Yap_ThrowError__(file, function, lineno, err, hd,                                            "high arity");                                 
+	 return NULL;
+       }
+      int pos =Yap_ArgKey(at, def, n);
+      if (pos < 0) {
+           Yap_ThrowError__(file, function, lineno, err, hd,                                            "high arity");                                 
+      }
+       if (!a[pos].used) {
+	 if (IsApplTerm(hd)) {
+	   a[pos].tvalue = ArgOfTerm(1, hd);
+	 } else {
+	   a[pos].tvalue = TermNil;
+	 };
+	 a[pos].used = true;
+	 a[pos].source = hd;
+       }
+        listl = TailOfTerm(listl);
     }
-    if (IsAtomTerm(hd)) {
-      xarg *na = matchKey(AtomOfTerm(hd), a, n, def);
-      if (!na)
-        Yap_ThrowError__(file, function, lineno, err, hd, "bad match in list");
-      na->used = true;
-      na->tvalue = TermNil;
-      continue;
-    } else if (IsApplTerm(hd)) {
-      Functor f = FunctorOfTerm(hd);
-      if (IsExtensionFunctor(f)) {
-        Yap_ThrowError__(file, function, lineno, err, hd, "bad compound");
-      }
-      arity_t arity = ArityOfFunctor(f);
-      if (arity != 1) {
-        Yap_ThrowError__(file, function, lineno, DOMAIN_ERROR_OUT_OF_RANGE, hd,
-                         "high arity");
-      }
-      xarg *na = matchKey(NameOfFunctor(f), a, n, def);
-      if (!na) {
-        Yap_ThrowError__(file, function, lineno, err, hd, "no match");
-      }
-      na->used = true;
-      na->tvalue = ArgOfTerm(1, hd);
-    } else {
-      Yap_ThrowError__(file, function, lineno, err, hd, "bad type");
-    }
-  }
-  if (IsVarTerm(listl)) {
-    Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, listl, "unbound");
-  } else if (listl != TermNil) {
-    Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "bad list");
-  }
   return a;
-  }
+}
+
 
 static xarg *matchKey2(Atom key, xarg *e0, int n, const param2_t *def) {
   int i;
@@ -152,7 +171,8 @@ static xarg *matchKey2(Atom key, xarg *e0, int n, const param2_t *def) {
 /// scope
 xarg *Yap_ArgList2ToVector__(const char *file, const char *function, int lineno,Term listl, const param2_t *def, int n, yap_error_number err) {
   CACHE_REGS
-  xarg *a = calloc(n, sizeof(xarg));
+  // step 1
+  xarg *a=calloc(sizeof(xarg),n);
   if (!IsPairTerm(listl) && listl != TermNil) {
     if (IsVarTerm(listl)) {
       Yap_ThrowError__(file, function, lineno, INSTANTIATION_ERROR, listl, "unbound");
@@ -176,8 +196,8 @@ xarg *Yap_ArgList2ToVector__(const char *file, const char *function, int lineno,
       }
       xarg *na = matchKey2(NameOfFunctor(f), a, n, def);
       if (!na) {
-        Yap_ThrowError__(file, function, lineno, DOMAIN_ERROR_GENERIC_ARGUMENT,
-                         listl, "bad match");
+        Yap_ThrowError__(file, function, lineno, err,
+                         listl, NULL);
       }
     } else {
       Yap_ThrowError__(file, function, lineno, TYPE_ERROR_LIST, listl, "");
@@ -192,7 +212,7 @@ xarg *Yap_ArgList2ToVector__(const char *file, const char *function, int lineno,
     if (IsAtomTerm(hd)) {
       xarg *na = matchKey2(AtomOfTerm(hd), a, n, def);
       if (!na) {
-        Yap_ThrowError__(file, function, lineno, DOMAIN_ERROR_GENERIC_ARGUMENT,
+        Yap_ThrowError__(file, function, lineno, err,
                          hd, "bad match");
       }
       na->used = true;
@@ -205,7 +225,7 @@ xarg *Yap_ArgList2ToVector__(const char *file, const char *function, int lineno,
       }
       arity_t arity = ArityOfFunctor(f);
       if (arity != 1) {
-        Yap_ThrowError__(file, function, lineno, DOMAIN_ERROR_GENERIC_ARGUMENT,
+        Yap_ThrowError__(file, function, lineno, err,
                          hd, "bad arity");
       }
       xarg *na = matchKey2(NameOfFunctor(f), a, n, def);

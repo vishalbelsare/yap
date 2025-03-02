@@ -14,21 +14,20 @@
 * comments:	attribute support for Prolog				 *
 *									 *
 *************************************************************************/
-
 /**
   @file attributes.yap
 
-@addtogroup New_Style_Attribute_Declarations SWI Compatible attributes
+  @addtogroup HPAtts
 
   @{
 
-*/
+*/	
 
-:- system_module(attributes,
-		 [copy_term/3],
-		 [
-		     call_residue/2,
-		  attvars_residuals/3]
+:- module(attributes,
+	  [
+	      call_residue/2,
+	      attvars_residuals/3]
+%	  [copy_term/3]
 	 ).
 
 :- dynamic existing_attribute/4.
@@ -44,7 +43,7 @@
 
 /** @pred copy_term(? _TI_,- _TF_,- _Goals_)
 
-Term  _TF_ is a variant of the original term  _TI_, such that for
+Term  _TF_ is a varia of the original term  _TI_, such that for
 each variable  _V_ in the term  _TI_ there is a new variable  _V'_
 in term  _TF_ without any attributes attached.  Attributed
 variables are thus converted to standard variables.   _Goals_ is
@@ -57,7 +56,10 @@ defined.
 
 
 */
-copy_term(Term, Copy, Gs) :-
+
+:- multifile woken_att_do/4.
+
+prolog:copy_term(Term, Copy, Gs) :-
     copy_term(Term,Copy),
     term_attvars(Copy,Vs),
     (   Vs == []
@@ -92,11 +94,11 @@ attvar_residuals(_ , V) -->
 attvar_residuals([] , _V)--> !.
 attvar_residuals(att(Module,_Value,As), V) -->
     { '$pred_exists'(attribute_goals(V, _,_),Module) },
-	Module:attribute_goals(V ),
-	!,
+    call(Module:attribute_goals(V )),
+    !,
     attvar_residuals(As, V).   
-	attvar_residuals(att(_,_Value,As), V) -->
-		attvar_residuals(As, V).   
+attvar_residuals(att(_,_Value,As), V) -->
+    attvar_residuals(As, V).   
 	%SICStus
 attvar_residuals(Attribute, V) -->
     { functor(Attribute,Module,Ar),
@@ -104,7 +106,7 @@ attvar_residuals(Attribute, V) -->
      },
     (
 	{
-	    '$pred_exists'(attribute_goal(V, Goal),Module),
+	    '$pred_exists'(attribute_goal(V, Goal,_,_),Module),
 	    call(Module:attribute_goal(V, Goal))
 	}
     ->
@@ -125,87 +127,48 @@ attvar_residuals(_, _) --> [].
    In this case, we need a way to keep the original
  goal around
 */
-%
-% what to do when an attribute gets bound
-%
-unify_attributed_variable(V,New) :-
-    setup_call_catcher_cleanup(
-	'$wake_up_start',
-	unify_attributed_variable_(V,New,List),
-	_Error,
-	'$wake_up_done'
-    ),
-    lcall(List).
 
-unify_attributed_variable_(V,New, LGoals) :-
-    attvar(V),
-    attvar(New),
+% what to do when two variables bind together
+%
+unify_attributed_variable(New,V) :-
+    nonvar(New),
+    nonvar(V),
     !,
-    get_attrs(V,Atts1),
-        get_attrs(New,Atts2),
-	(
-	 '$undefined'(woken_att_do(V, New, LGoals, DoNotBind), attributes)
-	->
-	 LGoals = [],
-	 DoNotBind = false
-	;
-	woken_att_do(V, New, LGoals, DoNotBind)
-	),
-	( DoNotBind == true
-	->
-	  unbind_attvar(V)
-	;
-	  bind_attvar(V)
-	),
-	get_attrs(New,Atts),
-	(Atts == Atts1
-	->
-	    do_hook_attributes(Atts2, New)
-	;
-	do_hook_attributes(Atts1, New)
-	),
-	( DoNotBind == true
-	->
-	bind_attvar(V)
-	;
-	true
-	).
-
+    V=New.
+unify_attributed_variable(New,V) :-
+    nonvar(New),
+    attvar(V),
+    !,
+    unify_attributed_variable(V,New).    
+unify_attributed_variable(V,New) :-
+    get_attrs(V,Atts),
+    !,
+    bind_attvar(V),
+    do_hook_attributes(Atts, New).
     
-unify_attributed_variable_(V,B,LGoals) :-
-	( \+ attvar(V); '$att_bound'(V) ),
-	!,
-	(
-		( attvar(B), \+ '$att_bound'(B) )
-	->
-	unify_attributed_variable_(B,V,LGoals)
-	;
-	V=B
-	).
-unify_attributed_variable_(V,New,LGoals) :-
-    get_attrs(V,SWIAtts),
-	(
-	 '$undefined'(woken_att_do(V, New, LGoals, DoNotBind), attributes)
-	->
-	 LGoals = [],
-	 DoNotBind = false
-	;
-	 woken_att_do(V, New, LGoals, DoNotBind)
-	),
-	( DoNotBind == true
-	->
-	  unbind_attvar(V)
-	;
-	  bind_attvar(V)
-	),
-	do_hook_attributes(SWIAtts, New).
+% SICStus 
+unify_attributed_variable(V,New) :-
+    attvar(V),
+    !,
+    woken_att_do(V, New, LGoals, DoNotBind),
+    (DoNotBind = false ->  bind_attvar(V) ; true),
+    lcall(LGoals).
+%    '$wake_up_done'.
+unify_attributed_variable_(V,V). % :-
+%    '$wake_up_done'.
 
+
+/**
+  * @pred attr_unify_hook(Att0, Binding)
+  *
+  * Module specific hook predicate called after binding an attributed variable.
+*/
 do_hook_attributes([], _) :- !.
 do_hook_attributes(Att0, Binding) :-
     Att0=att(Mod,Att,Atts),
     '$pred_exists'(attr_unify_hook(Att0, Binding),Mod),
     !,
-    Mod:attr_unify_hook(Att, Binding),
+    call(Mod:attr_unify_hook(Att, Binding)),
      do_hook_attributes( Atts, Binding).
 do_hook_attributes(att(_,_,Atts), Binding) :-
     do_hook_attributes( Atts, Binding).
@@ -300,7 +263,7 @@ dot_list((A,B)) --> !, dot_list(A), dot_list(B).
 dot_list(A)	--> [A].
 */
 
-delete_attributes(Term) :-
+prolog:delete_attributes(Term) :-
 	term_attvars(Term, Vs),
 	delete_attributes_(Vs).
 
@@ -312,7 +275,6 @@ delete_attributes_([V|Vs]) :-
 
 
 /** @pred call_residue(: _G_, _L_)
-v
 
 
 Call goal  _G_. If subgoals of  _G_ are still blocked, return
@@ -345,6 +307,7 @@ call_residue(Goal,Residue) :-
 	throw_error(instantiation_error,call_residue(Goal,Residue)).
 call_residue(Module:Goal,Residue) :-
 	atom(Module), !,
+
 	call_residue(Goal,Module,Residue).
 call_residue(Goal,Residue) :-
 	'$current_module'(Module),
@@ -373,7 +336,7 @@ project_delayed_goals(_).
 
 
 attributed(G, Vs) :-
-	term_variables(G, LAV),
+	variables_in_term(G, LAV,[]),
 	att_vars(LAV, Vs).
 
 att_vars([], []).
@@ -407,7 +370,7 @@ attribute_goal/2 handler.
  */
 run_project_attributes(AllVs, G) :-
 	findall(Mod,current_predicate(project_attributes,Mod:project_attributes(AttIVs, AllVs)),Mods),
-term_variables(G, InputVs),
+terms:variables_in_term(G, InputVs,[]),
 	pick_att_vars(InputVs, AttIVs),
 	project_module( Mods, AttIVs, AllVs).
 

@@ -78,8 +78,6 @@ typedef YAP_Bool (*YAP_UserCPred)(void);
 
 typedef int (*YAP_agc_hook)(void *_Atom);
 
-#include "YapError.h"
-
 #include "../os/encoding.h"
 
 typedef encoding_t YAP_encoding_t;
@@ -134,16 +132,30 @@ typedef enum {
 #define YAP_BOOT_FROM_SAVED_STACKS 2
 #define YAP_BOOT_ERROR -1
 
-#define YAP_WRITE_QUOTED 1
-#define YAP_WRITE_IGNORE_OPS 2
-#define YAP_WRITE_HANDLE_VARS 4
-#define YAP_WRITE_USE_PORTRAY 8
-#define YAP_WRITE_HANDLE_CYCLES 0x20
-#define YAP_WRITE_BACKQUOTE_STRING 0x80
-#define YAP_WRITE_ATTVAR_NONE 0x100
-#define YAP_WRITE_ATTVAR_DOTS 0x200
-#define YAP_WRITE_ATTVAR_PORTRAY 0x400
-#define YAP_WRITE_BLOB_PORTRAY 0x800
+/**
+ * These flags control the write routines.
+ */
+typedef enum write_flag {
+  YAP_WRITE_QUOTED = 0x01, //> quote illegal atoms
+  YAP_WRITE_IGNORE_OPS = 0x02, //> always write terms in prefix form
+  YAP_WRITE_CONJUNCTIONS = 0x04,
+  YAP_WRITE_USE_PORTRAY = 0x08,
+  YAP_WRITE_HEAP_TERMS = 0x10,
+  YAP_WRITE_HANDLE_CYCLES = 0x20,
+  Named_vars_f = 0x40,
+  BackQuote_String_f = 0x80,
+  AttVar_None_f = 0x100,
+  AttVar_Dots_f = 0x200,
+  AttVar_Portray_f = 0x400,
+  Blob_Portray_f = 0x800,
+  No_Escapes_f = 0x1000,
+  No_Brace_Terms_f = 0x2000,
+  Fullstop_f = 0x4000,
+  New_Line_f = 0x8000,
+  Number_vars_f = 0x10000,
+    Name_vars_f = 0x20000,
+    YAP_WRITE_ENABLE_DEPTH = 0x40000,
+} write_flag_t;
 
 #define YAP_CONSULT_MODE 0
 #define YAP_RECONSULT_MODE 1
@@ -229,7 +241,7 @@ typedef enum {
     UserMode = 0x2,            /** Normal mode */
     CritMode = 0x4,            /** If we are meddling with the heap */
     AbortMode = 0x8,           /** expecting to abort */
-    InterruptMode = 0x10,      /*8 under an interrupt */
+    InterruptMode = 0x10,      /** under an interrupt */
     InErrorMode = 0x20,        /** error handling */
     ConsoleGetcMode = 0x40,    /** blocked reading from console */
     GlobalOpMode = 0x80,    /** trying to extend stack */
@@ -263,12 +275,11 @@ typedef enum stream_f {
     Input_Stream_f = 0x000002,  /**< Input Stream */
     Output_Stream_f = 0x000004, /**< Output Stream in Truncate Mode */
     Append_Stream_f = 0x000008, /**< Output Stream in Append Mod */
-    Eof_Stream_f = 0x000010,    /**< Stream found an EOF */
     Null_Stream_f = 0x000020,   /**< Stream is /dev/null, or equivant */
     Tty_Stream_f = 0x000040,    /**< Stream is a terminal */
     Socket_Stream_f = 0x000080, /**< Socket Stream */
     Binary_Stream_f = 0x000100, /**< Stream is not eof */
-    Eof_Error_Stream_f =
+    Repeat_Eof_Stream_f =
     0x000200, /**< Stream should generate error on trying to read after EOF */
     Reset_Eof_Stream_f =
     0x000400, /**< Stream should be reset on findind an EO (C-D and console.*/
@@ -284,8 +295,7 @@ typedef enum stream_f {
     Popen_Stream_f = 0x080000,         /**< popen open, pipes mosylyn */
     User_Stream_f = 0x100000,          /**< usually user_ipiy  */
     HAS_BOM_f = 0x200000,              /**< media for streamhas a BOM mar. */
-    RepError_Prolog_f =
-    0x400000,              /**< handle representation error as Prolog terms */
+    RepError_Prolog_f = 0x400000,      /**< handle representation error as Prolog terms */
     RepError_Xml_f = 0x800000, /**< handle representation error as XML objects */
     DoNotCloseOnAbort_Stream_f =
     0x1000000, /**< do not close the stream after an abort event */
@@ -294,10 +304,12 @@ typedef enum stream_f {
     0x4000000, /**< the stream buffer should be releaed on close */
     CloseOnException_Stream_f =
     0x8000000, /**< the stream closed by Yap_Error and friends */
-   RepFail_Prolog_f =
+    RepClose_Prolog_f =
    0x01000000,	                /**< handle representation error as Prolog terms */
    Aliased_Stream_f =
-    0x01000000              /**< stream has an alias, or more */
+   0x02000000,              /**< stream has an alias, or more */
+   Text_Stream_f =
+   0x04000000              /**< stream is a text stream */
  } estream_f;
 
 
@@ -308,7 +320,7 @@ typedef uint64_t stream_flags_t;
 typedef enum {
   YAPC_ENABLE_GC, /* enable or disable garbage collection */
   YAPC_ENABLE_AGC /* enable or disable atom garbage collection */
-} yap_flag_gc_t;
+} prolog_flag_gc_t;
 
 typedef enum yap_enum_reset_t {
   YAP_EXEC_ABSMI = 0,

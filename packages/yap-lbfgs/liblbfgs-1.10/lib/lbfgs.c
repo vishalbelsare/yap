@@ -766,6 +766,7 @@ static int line_search_morethuente(int n, lbfgsfloatval_t *x,
       The variables stx, fx, dgx contain the values of the step,
       function, and directional derivative at the best step.
       The variables sty, fy, dgy contain the value of the step,
+
       function, and derivative at the other endpoint of
       the interval of uncertainty.
       The variables stp, f, dg contain the values of the step,
@@ -1035,7 +1036,7 @@ static int update_trial_interval(lbfgsfloatval_t *x, lbfgsfloatval_t *fx,
                                  const lbfgsfloatval_t tmin,
                                  const lbfgsfloatval_t tmax, int *brackt) {
   int bound;
-  int dsign = fsigndiff(dt, dx);
+  long int dsign = fsigndiff(dt, dx);
   lbfgsfloatval_t mc;   /* minimizer of an interpolated cubic. */
   lbfgsfloatval_t mq;   /* minimizer of an interpolated quadratic. */
   lbfgsfloatval_t newt; /* new trial value. */

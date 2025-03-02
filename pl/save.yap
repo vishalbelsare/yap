@@ -1,4 +1,4 @@
- /*************************************************************************
+/*************************************************************************
  *									 *
  *	 YAP Prolog 							 *
  *									 *
@@ -22,11 +22,13 @@
   * 
   * @brief  Old Style save
   *
-  * @addtòxgroup QLY
+  * @addtogroup QLY
+  *
+  * @{
   * 
 */
 
-:- system_module( '$_save', [], []).
+:- system_module_( '$_save', [], []).
 
 %%% Saving and restoring a computation
 /*
@@ -95,3 +97,6 @@ restore(A) :- atom(A), !, name(A,S), '$restore'(S).
 restore(S) :- '$restore'(S).
 
 */
+
+
+%% @}

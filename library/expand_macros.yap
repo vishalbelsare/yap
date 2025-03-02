@@ -17,8 +17,7 @@
 
 
 :- module( expand_macros,
-           [compile_aux/2,
-            pred_name/4,
+           [ pred_name/4,
             transformation_id/1,
             allowed_expansion/1,
             allowed_module/2] ).
@@ -41,35 +40,12 @@ number_of_expansions(0).
 % utilities
 %%%%%%%%%%%%%%%%%%%%
 
-compile_aux([Clause|Clauses], Module) :-
-	% compile the predicate declaration if needed
-    (
-	Clause = (Head :- _)
-     ;
-     Clause = Head
-    ),
-    !,
-    functor(Head, F, N),
-    ( current_predicate(Module:F/N)
-     ->
-	 true
-     ;
-     %	    format'*** Creating auxiliary predicate ~q~n', [F/N]),
-     %	    checklist(portray_clause, [Clause|Clauses]),
-     compile_term([Clause|Clauses], Module)
-    ).
-
-compile_term([], _).
-compile_term([Clause|Clauses], Module) :-
-	assert_static(Module:Clause),
-	compile_term(Clauses, Module).
-
 append_args(Term, Args, NewTerm) :-
 	Term =.. [Meta|OldArgs],
 	append(OldArgs, Args, GoalArgs),
 	NewTerm =.. [Meta|GoalArgs].
 
-aux_preds(Module:Meta, MetaVars, Pred, PredVars, Proto, _, OModule) :- !,
+aux_preds(Module:Meta, MetaVars, OModule:Pred, PredVars, Proto, _, OModule) :- !,
 	aux_preds(Meta, MetaVars, Pred, PredVars, Proto, Module, OModule).
 aux_preds(Meta, MetaVars, Pred, PredVars, Proto, Module, Module) :-
 	Meta =.. [F|Args],

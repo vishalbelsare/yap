@@ -113,7 +113,7 @@ typedef YAP_Int YAP_handle_t;
 
 typedef double YAP_Float;
 
-typedef void *YAP_Atom;
+typedef void * YAP_Atom;
 
 typedef void *YAP_Functor;
 
@@ -147,8 +147,6 @@ typedef YAP_handle_t yhandle_t;
 typedef encoding_t YAP_encoding_t;
 
 #include "YapFormat.h"
-
-#include "YapError.h"
 
 /*************************************************************************************************
                                         type casting macros

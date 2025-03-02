@@ -1,4 +1,4 @@
-/*************************************************************************
+/************************************************************************
 *									 *
 *	 YAP Prolog 							 *
 *									 *
@@ -18,14 +18,18 @@
 
 /**
 @file modules.yap
+@brief main module predicates.
+*/
 
-  @defgroup ModuleBuiltins Module Support
 
+/**
+  @defgroup ModBuiltins Prolog predicates and directives to use modules
   @ingroup YAPModules
+   @brief Utilities to manipulate the module system
   @{
 
-  **/
-:- system_module( '$_modules', [abolish_module/1,
+*/
+:- system_module_( '$_modules', [abolish_module/1,
 				add_import_module/3,
 				current_module/1,
 				current_module/2,
@@ -55,7 +59,7 @@
 						'$module'/3,
 						'$module'/4,
 						'$module_expansion'/6,
-						'$module_transparent'/2,
+						'$moule_transparent'/2,
 						'$module_transparent'/4]).
 
 
@@ -205,7 +209,7 @@ use_module(F) :- load_files(F,[if(not_loaded),must_be_module(true)]).
 
 
 /**
-  \pred  use_module(+Files, +Imports)
+  @pred  use_module(+Files, +Imports)
   loads a module file but only imports the named predicates
 
 
@@ -233,36 +237,16 @@ the graphs library is implemented on top of the red-black trees library, and som
 Unfortunately it is still not possible to change argument order.
 
 **/
+use_module(User, I) :-
+    strip_module(User,HostM,user),
+    !,
+    user \= HostM,
+    '$m_normalize'(I,HostM,NI),
+    forall(member(D,NI),'$do_import'(D, user, HostM)).
+
 use_module(F,Is) :-
     load_files(F, [if(not_loaded),must_be_module(true),imports(Is)] ).
 
-'$declare_module'(O,N,P,Opts) :- !,
-    '$declare_module'(O,N,P),
-    '$process_module_decls_options'(Opts,module(Opts,N,P)).
-
-
-'$process_module_decls_options'(Var,Mod) :-
-    var(Var), !,
-    throw_error(instantiation_error,Mod).
-'$process_module_decls_options'([],_) :- !.
-'$process_module_decls_options'([H|L],M) :- !,
-    '$process_module_decls_option'(H,M),
-    '$process_module_decls_options'(L,M).
-'$process_module_decls_options'(T,M) :-
-    throw_error(type_error(list,T),M).
-
-'$process_module_decls_option'(Var,M) :-
-    var(Var),
-    throw_error(instantiation_error,M).
-'$process_module_decls_option'(At,M) :-
-    atom(At), !,
-    use_module(M:At).
-'$process_module_decls_option'(library(L),M) :- !,
-    use_module(M:library(L)).
-'$process_module_decls_option'(hidden(Bool),M) :- !,
-    '$process_hidden_module'(Bool, M).
-'$process_module_decls_option'(Opt,M) :-
-    throw_error(domain_error(module_decl_options,Opt),M).
 
 '$process_hidden_module'(TNew,M) :-
     '$convert_true_off_mod3'(TNew, New, M),
@@ -280,13 +264,14 @@ use_module(F,Is) :-
 
 
 '$module_produced by'(M, M0, N, K) :-
-    '$import'(M,M0,_,_,N,K),
+     '$import'(M,M0,_,_,N,K),
     !.
 '$module_produced by'(M, M0, N, K) :-
     '$import'(MI,M0,G1,_,N,K),
     functor(G1, N1, K1),
     '$module_produced by'(M,MI,N1,K1).
 % prevent modules within the kernel module...
+
 /** @pred use_module(? _M_,? _F_,+ _L_) 
 
     SICStus directive for loading a module, it can operate in two 
@@ -374,9 +359,6 @@ be associated to a new file.
 \param[in]	 If _Redefine_ `true`, allow associating the module to a new file
 */
 
-%'$declare_module'(Name, _Super, Context, _File, _Line) :-
-%    add_import_module(Name, Context, start).
-
 /**
  @pred abolish_module( + Mod) is det
  get rid of a module and of all predicates included in the module.
@@ -388,12 +370,17 @@ abolish_module(Mod) :-
     retractall('$import'(Mod,_,_,_,_,_)),
     fail.
 abolish_module(Mod) :-
-    '$current_predicate'(Na,Mod,S,_),
-    functor(S, Na, Ar),
+    module_predicated(Mod,Na,Ar,_),
     abolish(Mod:Na/Ar),
     fail.
+
+
 abolish_module(_).
 
+%% @pred export(Resource)
+%%
+%% Allows adding resources to be exported.
+%%
 export(Resource) :-
     var(Resource),
     throw_error(instantiation_error,export(Resource)).
@@ -411,23 +398,23 @@ export_resource(P) :-
     P = F/N, atom(F), number(N), N >= 0, !,
     '$current_module'(Mod),
     (
-	clause('$module'(File,Mod,ExportedPreds,Line),_,R)
+	clause('$module'(File,Mod,ExportedPreds,Pos),_,R)
     ->
     (
-	'$member'(P,ExportedPreds)
+	member(P,ExportedPreds)
     ->
     true
     ;
     erase(R),
-    asserta('$module'(File,Mod,[P|ExportedPreds],Line))
+    asserta('$module'(File,Mod,[P|ExportedPreds],Pos))
     )
     ;
     (
-	prolog_load_context(file, File)
+	prolog_load_context(stream, File)
     ->
-    asserta('$module'(File,Mod,[P],Line))
+    asserta('$module'(File,Mod,[P],Pos))
     ;
-    asserta('$module'(user_input,Mod,[P],1))
+    asserta('$module'(user_input,Mod,[P],'$stream_position'(1,0,0,0)))
     )
     ).
 export_resource(P0) :-
@@ -435,12 +422,12 @@ export_resource(P0) :-
     N1 is N+2, P = F/N1,
     export_resource(P).
 export_resource(op(Prio,Assoc,Name)) :-
-    '$current_module'(Mod),
+'$current_module'(Mod),
     op(Prio,Assoc,Mod:Name),
     
     prolog_load_context(file, File),
     (
-	clause('$module'(File,Mod,ExportedPreds,Line),R)
+	clause('$module'(File,Mod,ExportedPreds,Pos),R)
     ->
     (
 	'$delete'(ExportedPreds, op(OldPrio, Assoc, Name), Rem)
@@ -462,13 +449,13 @@ export_resource(op(Prio,Assoc,Name)) :-
     (
 	Update == true
     ->
-    	  asserta('$module'(File,Mod,[op(Prio,Assoc,Name)|Rem],Line ))
+    	  asserta('$module'(File,Mod,[op(Prio,Assoc,Name)|Rem],Pos ))
     ;
-	nonvar(File)
+	nonvar(Pos)
     ->
-    asserta('$module'(File,Mod,[op(Prio,Assoc,Name)],Line))
+    asserta('$module'(File,Mod,[op(Prio,Assoc,Name)],Pos))
     ;
-    asserta('$module'(user_input,Mod,[op(Prio,Assoc,Name)],1))
+    asserta('$module'(user_input,Mod,[op(Prio,Assoc,Name)],'$stream_position'(1,0,0,0)))
     ).
 export_resource(Resource) :-
     throw_error(type_error(predicate_indicator,Resource),export(Resource)).
@@ -480,7 +467,7 @@ export_list(Module, List) :-
 '$add_to_imports'([], _, _).
 % no need to import from the actual module
 '$add_to_imports'([T|_Tab], Module, ContextModule) :-
-    '$do_import'(T, Module, ContextModule),
+    catch('$do_import'(T, Module, ContextModule),_,fail),
     fail.
 '$add_to_imports'([_T|Tab], Module, ContextModule) :-
     '$add_to_imports'(Tab, Module, ContextModule).
@@ -491,22 +478,38 @@ export_list(Module, List) :-
     op(Prio,Assoc,Mod:Name),
     fail.
 '$do_import'( NDonor/K-NHost/K, MDonor, MHost) :-
-    MDonor\=MHost,
-    MDonor\=prolog,
-    once('$check_import'(MHost,MDonor,NHost,K)),
     functor(GDonor,NDonor,K),
+    functor(GHost,NHost,K),
+\+ '$pred_exists'(GDonor,prolog),
+\+ '$pred_exists'(GHost,prolog),
     GDonor=..[NDonor|Args],
     GHost=..[NHost|Args],
+    once('$check_import'(MHost,MDonor,NHost,K)),
     \+ '$import'(_,MHost,_,GHost,_,_),
     asserta('$import'(MDonor,MHost,GDonor,GHost,NHost,K)),
     %writeln((MHost:GHost :- MDonor:GDonor)),
-    current_prolog_flag(source, YFlag),
-    set_prolog_flag(source, false),
-    asserta_static(MHost:(GHost :- MDonor:GDonor)),
-    set_prolog_flag(source, YFlag),
     '$mk_proxy_predicate'(GHost,MHost),
+   ('$is_metapredicate'(GDonor,MDonor) ->
+     	 recorded('$m' , meta_predicate(MDonor,GDonor),_),
+	 '$tag_module'(Args,MHost, NVars, NModVars),
+    ModGDonor=..[NDonor|NModVars],
+    ModGHost=..[NHost|NVars],
+	    assertz_static((MHost:ModGHost :- MDonor:ModGDonor))
+	    ;
+    assertz_static((MHost:GHost :- MDonor:GDonor))
+    ),
     fail.
 
+'$tag_module'([], _, [], []).
+'$tag_module'([N|Args], Mod, [V|NVArs], [Mod:V|NModVars]) :-
+	number(N),
+	!,
+	 '$tag_module'(Args, Mod, NVArs, NModVars).
+'$tag_module'([:|Args], Mod, [V|NVArs], [Mod:V|NModVars]) :-
+	!,
+	 '$tag_module'(Args, Mod, NVArs, NModVars).
+'$tag_module'([_|Args], Mod, [V|NVArs], [V|NModVars]) :-
+	 '$tag_module'(Args, Mod, NVArs, NModVars).
 
 % trying to import Mod:N/K into ContextM
 '$check_import'(prolog, _ContextM, _N, _K) :-
@@ -546,10 +549,10 @@ export_list(Module, List) :-
     ( C == e -> halt(1) ;
       C == y ).
 '$redefine_action'(true, M1, _, _, _, _) :- !,
-    '$module'(F, M1, _MyExports,_Line),
+    '$module'(F, M1, _MyExports,_Loc),
     unload_file(F).
 '$redefine_action'(false, M1, M2, _M, ContextM, N/K) :-
-    '$module'(F, ContextM, _MyExports,_Line),
+    '$module'(F, ContextM, _MyExports,_Loc),
     '$current_module'(_, M2),
     throw_error(permission_error(import,M1:N/K,redefined,M2),F).
 
@@ -559,8 +562,7 @@ export_list(Module, List) :-
     (C == y -> true; C == n).
 
 /**
-  @pred set_base_module( +Expor
-tingModule ) is det
+  @pred set_base_module( +ExportingModule ) is det
   @brief All
 predicates exported from _ExportingModule_ are automatically available to the
 other source modules.
@@ -675,7 +677,7 @@ Reports the following properties of _Module_:
 
   + `line_count`(?_Ls_): number of lines in source file (if there is one).
 
-  + `file`(?_F_): source file for _Module_ (if there is one).
+888  + `file`(?_F_): source file for _Module_ (if there is one).
 
   + `exports`(-Es): list of all predicate symbols and
    operator symbols exported or re-exported by this module.
@@ -689,7 +691,8 @@ module_property(Mod, Prop) :-
 module_property(Mod, class(L)) :-
     '$module_class'(Mod, L).
 module_property(Mod, line_count(L)) :-
-    '$module'(_F,Mod,_,L).
+    '$module'(_F,Mod,_,Pos),
+    arg(1,Pos,L).
 module_property(Mod, file(F)) :-
     '$module'(F,Mod,_,_).
 module_property(Mod, exports(Es)) :-
@@ -724,6 +727,12 @@ ls_imports :-
     fail.
 ls_imports.
 
+unload_module(user) :-
+    !.
+unload_module(prolog) :-
+    !.
+unload_module(idb) :-
+    !.
 unload_module(Mod) :-
     recorded('$multifile_defs','$defined'(_FileName,_Name,_Arity,Mod), R),
     erase(R),
@@ -734,21 +743,13 @@ unload_module(Mod) :-
     fail.
 % remove imported modules
 unload_module(Mod) :-
-    setof( M, _G0^_G^_N^_K^_R^'$import'(Mod,M,_G0,_G,_N,_K), Ms),
-    '$module'( _, Mod, _, Exports),
-    '$memberchk'(M, Ms),
-    current_op(X, Y, M:Op),
-    '$memberchk'( op(X, Y, Op), Exports ),
-    op(X, 0, M:Op),
-    fail.
-unload_module(Mod) :-
-    '$module'( _, Mod, _, Exports),
+     '$module'( _, Mod, _, Exports),
     '$memberchk'( op(X, _Y, Op), Exports ),
     op(X, 0, Mod:Op),
-    fail.
+     fail.
 unload_module(Mod) :-
-    current_predicate(Mod:P),
-    abolish(P),
+    module_predicate(Mod,N,A,_),
+    abolish(Mod:N/A),
     fail.
 unload_module(Mod) :-
     retractall('$import'(Mod,_M,_G0,_G,_N,_K)),
@@ -758,9 +759,10 @@ unload_module(Mod) :-
 
 /*  debug */
 module_state :-
-    '$module'(HostF,HostM, Everything, Line),
+    '$module'(HostF,HostM, Everything, Location),
     \+ system_module(HostM),
     atom(HostM),
+    arg(2,Location,Line),
     format('%%%%%%~n          ~a,~n%% at ~w,~n%% loaded at ~a:~d,~n%% Exporlist ~w.~nImports~n:', [HostM,HostF, Line, Everything]),
     (
 	'$import'(M,HostM,_G,_GO,N,K),                                   
@@ -777,9 +779,55 @@ module_state.
 :- dynamic( '$module'/4 ).
 :- dynamic( '$import'/6 ).
 
-'$module'(user_input,user,[],1).
+'$module'(user_input,user,[],'$stream_position'(0,1,0,0)).
+
+'$check_module'(File,Mod) :-
+    '$module'(File,Mod,ExpL,_Loc),
+    !,
+    '$simplify_functors'(ExpL, CallL),
+    '$check_module_exports'(CallL,File,Mod),
+    '$check_module_undefineds'(File,Mod).
+'$check_module'(_File,_Mod).
+
+'$simplify_functors'([], []).
+'$simplify_functors'([N/A-_|ExpL], [N/A|CallL]) :-
+    !,
+    '$simplify_functors'(ExpL, CallL).
+'$simplify_functors'([_|ExpL], CallL) :- 
+    '$simplify_functors'(ExpL, CallL).
+
+'$check_module_exports'([],_,_Mod).
+'$check_module_exports'([N/A|Exports],File,Mod) :-
+     functor_predicate(Mod,N,A,_),
+    !,
+    '$check_module_exports'(Exports,File,Mod).
+'$check_module_exports'([N/A|Exports],File,Mod) :-
+    functor_predicate(prolog,N,A,_),
+    !,
+    '$check_module_exports'(Exports,File,Mod).
+'$check_module_exports'([N/A|Exports],File,Mod) :-
+    '$import'(_,Mod,_,_,N,A),
+    !,
+    '$check_module_exports'(Exports,File,Mod).
+'$check_module_exports'([NE/AE|Exports],File,Mod) :-
+    format(string(Msg),`module ~a  exports procedure ~q, but this procedure is not defined or imported in the module`,[Mod,NE/AE]),
+    print_message(warning, error(warning(export_undefined,Mod:NE/AE),[parserFile=File,parserLine=1,parserPos=0,errorMsg=Msg,prologConsulting=true,parserReadingCode=true,File=File ])),
+    '$check_module_exports'(Exports,File,Mod).
+
+'$check_module_undefineds'(File,Mod) :-
+    module_predicate(Mod,N,A,undefined),
+    functor(P,N,A),
+    \+ '$is_proxy_predicate'(P, Mod),
+    \+ functor_predicate(prolog,N,A,_),
+    \+  '$import'(_,Mod,_,P,_,_),
+    '$owner_file_line'(P,Mod,Line),
+    functor(P,NE,AE),
+    format(string(Msg),`could not find a definition for ~q within the module ~a or its imports`,[NE/AE,Mod]),
+    print_message(warning, error(warning(undefined_in_module,Mod:
+    NE/AE),[parserReadingCode=true,parserPos=0, parserFile=File,parserLine=Line,errorMsg = Msg,prologConsulting=true ])),
+    fail.
+'$check_module_undefineds'(_,_Mod).
 
 %% @}
-
 
 

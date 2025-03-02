@@ -23,7 +23,7 @@
  *
  *
 */
-:- system_module( '$_consult', [compile/1,
+:- system_module_( '$_consult', [compile/1,
         consult/1,
         db_files/1,
         ensure_loaded/1,
@@ -76,8 +76,10 @@
 
 /**
 
+
+
   @defgroup YAPConsulting Loading files into YAP
-  @ingroup load_files
+  @ingroup  YAPProgramming
 
   @{
 
@@ -254,7 +256,7 @@ db_files(Fs) :-
 
 
 '$csult'(Fs, _M) :-
-	 '$skip_list'(_, Fs ,L),
+	 skip_list(_, Fs ,L),
 	 L \== [],
 	 !,
 	 python:python_proc( Fs ) .
@@ -272,6 +274,7 @@ db_files(Fs) :-
 '$extract_minus'([-F|Fs], [F|MFs]) :-
 	'$extract_minus'(Fs, MFs).
 
+%% @}
 
 /** @defgroup  YAPCompilerSettings Directing and Configuring the Compiler
     @ingroup  YAPConsulting
@@ -331,8 +334,8 @@ initialization(_G,_OPT).
 	OPT == now
     ->
     ( catch(call(G),
-	    Error,
-	    '$LoopError'( Error, consult )
+	    _Error,
+	    error_handler 
 	   ) ->
       true ;
       format(user_error,':- ~w failed.~n',[G])
@@ -363,8 +366,8 @@ initialization(_G,_OPT).
 	 erase(R),
 	(catch(
 	 (G),
-	 E,
-	 '$LoopError'(E,top)
+	 _E,
+	 error_handler
 	 )
 	->
 	    	 true %format(user_error,':- ~w ok.~n',[G]),
@@ -382,7 +385,7 @@ initialization(_G,_OPT).
     '$init_win_graphics',
     fail.
 '$do_startup_reconsult'(X) :-
-    catch(load_files(user:X, [silent(true)]), Error, '$LoopError'(Error, consult)),
+    catch(load_files(user:X, [silent(true)]), _Error, error_handler),
   % still need to run -g or -z
     get_value('$top_level_goal',[]),
     !,
@@ -395,23 +398,48 @@ initialization(_G,_OPT).
 	'$skip_unix_header'(Stream).
 '$skip_unix_header'(_).
 
+/**
+@pred source_file(?FileName)
 
+SWI-compatible predicate. _FileName_ is the absolute and canonical path for a loaded source file
+*/ 
 source_file(FileName) :-
 	'$source_file'(FileName, __).
 
+/**
+@pred source_file(:Pred,?File	)
+
+SWI-compatible predicate. True if the predicate specified by  _Pred_ was loaded from file  _File_, where  _File_ is an absolute path name (see absolute_file_name/2).
+*/ 
 source_file(Mod:Pred, FileName) :-
 	current_module(Mod),
 	Mod \= prolog,
-	'$current_predicate'(_,Mod,Pred,all),
+	current_predicate(_,Mod:Pred),
 	'$owned_by'(Pred, Mod, FileName).
 
 '$owned_by'(T, Mod, FileName) :-
-	'$is_multifile'(T, Mod),
 	functor(T, Name, Arity),
 	setof(FileName, Ref^recorded('$multifile_defs','$defined'(FileName,Name,Arity,Mod), Ref), L),
-	'$member'(FileName, L).
+        member(FileName, L).
 '$owned_by'(T, Mod, FileName) :-
 	'$owner_file'(T, Mod, FileName).
+
+
+/**
+@pred source_file_property(?Pred,?Property)
+
+_FileName_ is the absolute and canonical path source  for the source file that
+has  the property
+
+
+*/
+source_file_property( F, includes(I)) :-
+        recorded('$includes',(I->F), _).
+source_file_property( I, included_from(F)) :- 
+       recorded('$includes',(I->F), _).
+
+source_file_property( F, load_context(M,OldF:Line,Opts)) :-
+	recorded('$lf_loaded','$lf_loaded'( F, M, _Reconsult, _UserFile, OldF, Line, Opts), _).
 
 /** @pred prolog_load_context(? _Key_, _Value_)
  * 
@@ -442,7 +470,7 @@ source_file(Mod:Pred, FileName) :-
   Full name for the file currently being read in, which may be consulted,
   reconsulted, or included
 
-  + `stream`  (prolog_load_context/2 option)
+2  + `stream`  (prolog_load_context/2 option)
 
   Stream currently being read in.
 
@@ -452,52 +480,66 @@ source_file(Mod:Pred, FileName) :-
   compatibility, it is a term of the form
   '$stream_position'(0,Line,0,0).
 
-  + `source_location(? _File Name_, ? _Line_)`   (prolog_load_context/2 option)
+   + `term`   (prolog_load_context/2 option)
 
-  SWI-compatible predicate. If the last term has been read from a physical file (i.e., not from the file user or a string), unify File with an absolute path to the file and Line with the line-number in the file. Please use prolog_load_context/2.
+   The term being processed, if any.
 
-  + `source_file(? _File_)`  (prolog_load_context/2 option)
+   + `variable_names`   (prolog_load_context/2 option)
 
-  SWI-compatible predicate. True if  _File_ is a loaded Prolog source file.
-
-  + `source_file(? _ModuleAndPred_ ,? _File_)`  (prolog_load_context/2 option)
-
-  SWI-compatible predicate. True if the predicate specified by  _ModuleAndPred_ was loaded from file  _File_, where  _File_ is an absolute path name (see `absolute_file_name/2`).
-
+   The names of the variables in the term being processed, if any.
 */
 prolog_load_context(directory, DirName) :-
         ( source_location(F, _)
         -> file_directory_name(F, DirName) ;
           working_directory( DirName, DirName )
         ).
-prolog_load_context(source, FileName) :-
-        (             '__NB_getval__'('$consulting_file', FileName, fail)
-        ->
-          true
-        ;
-          FileName = user_input
-        ).
+prolog_load_context(source, SourceName) :-
+    '__NB_getval__'('$consulting_file', FileName, fail),
+    (
+        recorded('$includes',(FileName->SourceName), _) 
+    ->
+    true
+    ;
+    FileName = SourceName
+    ),
+    !.
+prolog_load_context(source, user_input).
+
 prolog_load_context(module, X) :-
         '__NB_getval__'('$consulting_file', _, fail),
         current_source_module(Y,Y),
         Y = X.
-prolog_load_context(file, F0) :-
-    ( source_location(F0, _) /*,
-                                   '$input_context'(Context),
-                                   '$top_file'(Context, F0, F) */
-          ->
-          true
-        ;
-          F0 = user_input
-        ).
+prolog_load_context(file, Term ) :-
+    b_getval('$current_clause', T),
+    nonvar(T),
+    T = [_,_,Term|_].
 prolog_load_context(stream, Stream) :-
     stream_property(Stream, alias(loop_stream) ).
-
+prolog_load_context(term, Term ) :-
+    b_getval('$current_clause', T),
+    nonvar(T),
+    T = [Term|_].
+prolog_load_context(term_position, Term ) :-
+    (
+    b_getval('$current_clause', T),
+    nonvar(T) ->
+    T = [_,_,_,Term]
+    ;
+    predicate_property( user_input, position(Term))
+    ).
+prolog_load_context(variable_names, Term ) :-
+    (
+    b_getval('$current_clause', T),
+    nonvar(T)
+    ->
+    T = [_,Term|_]
+    ;
+    Term = []
+    ).
 
 % if the file exports a module, then we can
 % be imported from any module.
 '$file_loaded'(F0, TargetModule, M) :-
-    %format( 'L=~w~n', [(F0)] ),
     (
 	atom_concat(Prefix, '.qly', F0 );
 	Prefix=F0
@@ -507,6 +549,7 @@ prolog_load_context(stream, Stream) :-
     ;
     F0 = F
     ),
+
     '$ensure_file_loaded'(F,TargetModule, M).
 
 '$ensure_file_loaded'(F, TargetModule,   NM) :-
@@ -515,8 +558,8 @@ prolog_load_context(stream, Stream) :-
 	 true
     ;
     % loaded from the same module, but does not define a module.
-    '$source_file_scope'(F, NM),
-    NM=TargetModule
+    '$source_file'(F, NM), % that does not define a module
+    NM==TargetModule
     ).
 
 % if the file exports a module, then we can
@@ -536,8 +579,7 @@ prolog_load_context(stream, Stream) :-
 	 Reconsult0 \== consult,
 	 Reconsult0 \== not_loaded,
 	 Reconsult0 \== changed,
-	 retractall('$source_file'(F, _)),
-	 retractall('$source_file_scope'(F, _)),
+%	 retractall('$source_file'(F, _)),
 	 fail
 	;
 	 var(Reconsult0)
@@ -546,12 +588,13 @@ prolog_load_context(stream, Stream) :-
 	;
 	 Reconsult = Reconsult0
 	),
-	(
+		(
 	    Reconsult \== consult,
 	    recorded('$lf_loaded','$lf_loaded'(F, _, _, _, _, _, _),R),
 	    erase(R),
 	    fail
-	    ;
+	;
+	
 	    var(Reconsult)
 	    ->
 		Reconsult = consult
@@ -567,13 +610,12 @@ prolog_load_context(stream, Stream) :-
 	    true
 	;
 
-
 	recorda('$lf_loaded','$lf_loaded'( F, M, Reconsult, UserFile, OldF, Line, Opts), _)
 	).
 
 /** @pred make
 
-SWI-Prolog originally included this built-in as a Prolog version of the Unix `make`
+SWI-Prolog originally included this built-in as a Prolog version of the Unix make
 utility program. In this case the idea is to reconsult all source files that have been changed since they were originally compiled into Prolog. YAP has a limited implementation of make/0 that
 just goes through every loaded file and verifies whether reloading is needed.
 
@@ -585,35 +627,67 @@ make :-
 	fail.
 make.
 
-make_library_index(_Directory).
+unload_file(user) :-
+    !,
+    '$unload_file'(user_input).
+unload_file(user_input) :-
+    !,
+    '$unload_file'(user_input).
+unload_file(F) :-
+    absolute_file_name(F,[access(read),file_type(prolog),file_errors(fail),solutions(first),expand(true)],File),
+    unload_file_(File).
+
+
+unload_file_(File) :-
+     recorded('$lf_loaded','$lf_loaded'(File,_M,_,_,_,_,_),_),
+     !,
+    '$unload_file'(File).
+unload_file_(_).
+
+'$unload_file'(File) :-
+    current_predicate(N,M:P),
+    M \= prolog,
+    M \= idb,
+    (
+    '$is_multifile'(P,M) 
+    ->
+	clause(M:P,_,R),
+	clause_property(R,file(File)),
+	'$erase_clause'(R,M)
+	;
+      predicate_property(M:P, dynamic)
+	->
+	clause(M:P,_,R),
+	clause_property(R,file(File)),
+	erase(R)
+	;
+	predicate_property(M:P, file(File)),
+    functor(P,N,A),
+	abolish(M:N/A)
+	),
+	fail.
+'$unload_file'(File) :-
+    '$module'(File,DonorM, _AllExports, _),
+    DonorM \= prolog,
+    DonorM \= user,
+    unload_module(DonorM),
+    fail.
+'$unload_file'(File) :-
+	retractall('$source_file'(File,_Age)),
+	fail.
+'$unload_file'(File) :-
+	recorded('$lf_loaded','$lf_loaded'(File,_M,_,_,_,_,_),R),
+	erase(R),
+	fail.
+'$unload_file'(_F).
 
 '$fetch_stream_alias'(OldStream,Alias) :-
 	stream_property(OldStream, alias(Alias)), !.
 
 '$require'(_Ps, _M).
 
-'$store_clause'('$source_location'(File, _Line):Clause, File) :-
+'$store_clause'('$source_location'(File, _Line,_,_),Clause, File) :-
 	assert_static(Clause).
-% reload_file(File) :-
-%         ' $source_base_name'(File, Compile),
-%         findall(M-Opts,
-%                 source_file_property(File, load_context(M, _, Opts)),
-'$unload_file'( FileName, _F0 ) :-
-    '$current_predicate'(_,M,Goal,_),
-    '$is_multifile'(Goal,M),
-    clause(Goal,_,ClauseRef),
-    clause_property(ClauseRef,file(FileName)),
-    erase(ClauseRef),
-    fail.
-'$unload_file'( FileName, _F0 ) :-
-    retract('$module'( FileName, Mod, _, _)),
-
-    unload_module(Mod),
-    fail.
-'$unload_file'( FileName, _F0 ) :-
-    recorded('$directive','$d'( FileName, _M:_G, _Mode,  _VL, _Pos ), R),
-    erase(R),
-    fail.
 
 %% @}
 
@@ -621,7 +695,7 @@ make_library_index(_Directory).
 
 @defgroup Conditional_Compilation Conditional Compilation
 
-@ingroup  YAPCompilerSettings
+@ingroup  YAPConsulting
 
 @{
  Conditional compilation builds on the same principle as
@@ -678,8 +752,8 @@ If an error occurs, the error is printed and processing proceeds as if
 %
 % This is complicated because of embedded ifs.
 %
-'$if'(_,top) :- !.
-'$if'(Goal,_) :-
+'$if'(Goal) :-
+    must_be_callable(Goal),
     '$conditional_compilation'(Inp),
     (Inp == skip
    ->
@@ -702,8 +776,7 @@ If an error occurs, the error is printed and processing proceeds as if
 Start `else' branch.
 
 */
-'$else'(top) :- !.
-'$else'(_) :-
+'$else' :-
     '$conditional_compilation'(Inp),
     ( Inp == run
     ->
@@ -726,8 +799,7 @@ Equivalent to `:- else. :-if(Goal) ... :- endif.`  In a sequence
 as below, the section below the first matching elif is processed, If
 no test succeeds the else branch is processed.
 */
-'$elif'(_,top) :- !.
-'$elif'(Goal,_) :-
+'$elif'(Goal) :-
  	 '$conditional_compilation'(Inp),
    (
    Inp == run
@@ -751,8 +823,7 @@ no test succeeds the else branch is processed.
 QEnd of cond  itional compilation.
 
 */
-'$endif'(top) :- !.
-'$endif'(_) :-
+'$endif' :-
     '$conditional_compilation_pop'.
 
 %% base layer runs 
@@ -760,39 +831,63 @@ QEnd of cond  itional compilation.
     nb_setval('$conditional_compilation_level',[run]).
 
 '$conditional_compilation_get_state'(state(LB)) :-
-    nb_getval('$conditional_compilation_level', LB).
+    catch(nb_getval('$conditional_compilation_level', LB), _Undef,
+('$conditional_compilation_init',
+'$conditional_compilation_get_state'(state(LB)) )
+).
 
 '$conditional_compilation_set_state'(state(LB)) :-
     nb_setval('$conditional_compilation_level', LB).
 
 '$conditional_compilation_push'(Mode) :-
-    nb_getval('$conditional_compilation_level', Levels),
+    '__NB_getval__'('$conditional_compilation_level', Levels,fail),
     nb_setval('$conditional_compilation_level', [Mode|Levels]).
 
 
 '$conditional_compilation'(Mode) :-
-    nb_getval('$conditional_compilation_level', [Mode|_Levels]).
+    '__NB_getval__'('$conditional_compilation_level', [Mode|_Levels], fail).
 
-'$conditional_compilation_skip'  :-
-    nb_getval('$conditional_compilation_level', [L|_Levels]),
+
+'$conditional_compilation_skip'(V)  :-
+    var(V),
+    !,
+    '__NB_getval__'('$conditional_compilation_level', [L|_Levels], fail),
+    (L == skip
+    ;
+    L == done),
+    !.
+'$conditional_compilation_skip'((:-if(G)))  :-
+      '$if'(G),
+      !.
+'$conditional_compilation_skip'((:-elif(G)))  :-
+      '$elif'(G),
+!.
+'$conditional_compilation_skip'((:-else))  :-
+      '$else',
+!.
+'$conditional_compilation_skip'((:-endif))  :-
+      '$endif',
+!.
+'$conditional_compilation_skip'(_)  :-
+    '__NB_getval__'('$conditional_compilation_level', [L|_Levels], fail),
     (L == skip
     ;
     L == done),
     !.
 
 '$conditional_compilation_set'(Mode) :-
-    nb_getval('$conditional_compilation_level', [_Mode_|Levels]),
+    '__NB_getval__'('$conditional_compilation_level', [_Mode_|Levels], fail),
     nb_setval('$conditional_compilation_level', [Mode|Levels]).
 
 
 '$conditional_compilation_pop' :-
-    nb_getval('$conditional_compilation_level', [_|Levels]),
+    '__NB_getval__'('$conditional_compilation_level', [_|Levels], fail),
     nb_setval('$conditional_compilation_level', Levels).
     
 :- '$conditional_compilation_init'.
 
 '$if_call'(G) :-
-	catch('$eval_if'(G), E, (print_message(error, E), fail)).
+	catch('$eval_if'(G), _E, error_handler).
 
 '$eval_if'(Goal) :-
 	expand_term(Goal,TrueGoal),
@@ -832,7 +927,8 @@ QEnd of cond  itional compilation.
 consult_depth(LV) :- '$show_consult_level'(LV).
 
 prolog_library(File) :-
-    current_prolog_flag(verbose,Old,false),
+    current_prolog_flag(verbose_load,Old),
+    set_prolog_flag(verbose_load,false),
     ensure_loaded(library(File)),
     set_prolog_flag(verbose_load,Old).
 
@@ -840,6 +936,8 @@ prolog_library(File) :-
 	absolute_file_name(File0,[access(read),file_type(prolog),file_errors(fail),solutions(first),expand(true)],File).
 
 :- multifile user:dot_qualified_goal/1.
+
+
 
 :- dynamic '$source_file'/2, '$source_file_scope'/2.
 /**

@@ -478,6 +478,7 @@ fix_tabling_info( USES_REGS1 )
   struct subgoal_frame *sg;
 
   df = LOCAL_top_dep_fr;
+  if (df) {
   while (df) {
     if (DepFr_backchain_cp(df))
       DepFr_backchain_cp(df) = ChoicePtrAdjust(DepFr_backchain_cp(df));
@@ -492,6 +493,7 @@ fix_tabling_info( USES_REGS1 )
     if (SgFr_gen_cp(sg))
       SgFr_gen_cp(sg) = GeneratorChoicePtrAdjust(SgFr_gen_cp(sg));
     sg = SgFr_next(sg);
+  }
   }
 }
 #endif /* TABLING */
@@ -526,7 +528,6 @@ AdjustLocal(bool thread_copying USES_REGS)
   fix_tabling_info( PASS_REGS1 );
 #endif /* TABLING */
   fixPointerCells( pt, pt_bot, thread_copying PASS_REGS);
-  AdjustSlots( thread_copying PASS_REGS);
 }
 
 static Term
@@ -552,11 +553,11 @@ static void
 AdjustGlobal(Int sz, bool thread_copying USES_REGS)
 {
   ArrayEntry *al = LOCAL_DynamicArrays;
-  StaticArrayEntry *sal = LOCAL_StaticArrays;
+  ArrayEntry *sal = LOCAL_StaticArrays;
   GlobalEntry *gl = LOCAL_GlobalVariables;
 
   while (al) {
-    al->ValueOfVE = AdjustGlobTerm(al->ValueOfVE PASS_REGS);
+    al->ValueOfDynamicVE = AdjustGlobTerm(al->ValueOfDynamicVE PASS_REGS);
     al = al->NextAE;
   }
   while (gl) {
@@ -571,9 +572,9 @@ AdjustGlobal(Int sz, bool thread_copying USES_REGS)
       UInt arity = -sal->ArrayEArity, i;
       for (i=0; i < arity; i++) {
 	/*	    sal->ValueOfVE.lterms[i].tlive = AdjustGlobTerm(sal->ValueOfVE.lterms[i].tlive); */
-	Term tlive  = sal->ValueOfVE.lterms[i].tlive;
-	if (!IsVarTerm(tlive) || !IsUnboundVar(&sal->ValueOfVE.lterms[i].tlive)) {
-	  sal->ValueOfVE.lterms[i].tlive = AdjustGlobTerm(sal->ValueOfVE.lterms[i].tlive PASS_REGS);
+	Term tlive  = sal->ValueOfStaticVE.lterms[i].tlive;
+	if (!IsVarTerm(tlive) || !IsUnboundVar(&sal->ValueOfStaticVE.lterms[i].tlive)) {
+	  sal->ValueOfStaticVE.lterms[i].tlive = AdjustGlobTerm(sal->ValueOfStaticVE.lterms[i].tlive PASS_REGS);
 	}
       }
     }
@@ -606,7 +607,9 @@ AdjustGlobal(Int sz, bool thread_copying USES_REGS)
 	*hpt = LocalAdjust(reg);
       else if (IsOldTrail(reg)) {
 	*hpt = TrailAdjust(reg);
-      } else if ( IsExtensionFunctor((Functor)reg) && reg > 0 && reg % sizeof(CELL)==0 ) {
+      } else if ( IsExtensionFunctor((Functor)reg) && reg != (CELL)FunctorDouble &&
+		  reg != (CELL)FunctorLongInt
+		  && reg > 0 && reg % sizeof(CELL)==0 ) {
 	ssize_t bigsz =  SizeOfOpaqueTerm(hpt,reg);
 	if (bigsz <= 0 || hpt + bigsz > HR ||!IsAtomTerm(hpt[bigsz-1])) {
 	  *hpt = reg;
@@ -637,6 +640,7 @@ AdjustStacksAndTrail(Int sz, bool copying_threads USES_REGS)
   AdjustTrail(true, copying_threads PASS_REGS);
   AdjustLocal(copying_threads PASS_REGS);
   AdjustGlobal(sz, copying_threads PASS_REGS);
+  AdjustSlots( copying_threads PASS_REGS);
 }
 
 void
@@ -655,6 +659,7 @@ AdjustGrowStack( USES_REGS1 )
 {
   AdjustTrail(FALSE, STACK_SHIFTING PASS_REGS);
   AdjustLocal(STACK_SHIFTING PASS_REGS);
+  AdjustSlots(false PASS_REGS);
 }
 
 static void

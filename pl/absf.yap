@@ -12,10 +12,13 @@
 
  @file absf.yap
  @author L.Damas, V.S.Costa
+*/
 
+/**
  @defgroup absf File Name Resolution
- @ingroup load_files
  @ingroup InputOutput
+
+@{
 
  Support for file name resolution through absolute_file_name/3 and
   friends. These utility built-ins describe a list of directories that
@@ -23,10 +26,9 @@
   plus user-defined directories, directories based on environment
   variables and registry information to search for files.
 
-@{
 
 */
-:- system_module( absf, [
+:-  system_module( '$absf', [
         absolute_file_name/3,
         add_to_path/1,
         add_to_path/2,
@@ -36,10 +38,10 @@
 :- multifile user:file_search_path/2.
 :- dynamic user:file_search_path/2.
 
-:- dynamic prolog_file_type/2.
+:- dynamic user:prolog_file_type/2.
 
-absf_trace(Msg, Args ) -->
-    { absf_trace(Msg,Args) }.
+
+% :- set_prolog_flag( verbose_file_search, true ).
 
 
 absf_trace(Msg, Args ) :-
@@ -47,7 +49,7 @@ absf_trace(Msg, Args ) :-
     catch(
 	print_message( informational, absolute_file_path( Msg, Args ) ),
 	  _,
-	  true
+		true
       ),
     !.
 absf_trace( _, _ ).
@@ -73,59 +75,63 @@ absf_trace_component( Prefix, List ) :-
 absf_trace_component( _, _ ).
 
 
-'$validate_absf'(_File, TrueFile, LOpts, LOpts, TrueFile) :-
+validate_absf(_File, TrueFile, LOpts, LOpts, TrueFile) :-
 	var(TrueFile),
 	!,
 	must_be_list(LOpts).
-'$validate_absf'(_File, LOpts, TrueFile, LOpts, TrueFile ).
+validate_absf(_File, LOpts, TrueFile, LOpts, TrueFile ).
 	
-'$enter_absf'( File, LOpts, Opts, State ) :- !,
-    ( var(File) -> instantiation_error(File) ; true),
+enter_absf( File, LOpts, Opts, State ) :-
+    !,
+    (
+    var(File)
+    ->
+    instantiation_error(File) ; true),
     absf_trace('input: ~w',File),
     absf_trace_component('     ', LOpts),
     abs_file_parameters(LOpts,Opts),
-    current_prolog_flag( expand_file_name, PreviousFileNameExpand ),
+    current_prolog_flag( open_expands_filename, PreviousFileNameExpand ),
     current_prolog_flag( file_errors, PreviousFileErrors ),
     current_prolog_flag( verbose_file_search, PreviousVerbose ),
     working_directory(D0,D0),
     State = abs_entry(File, D0, PreviousFileErrors, PreviousVerbose, PreviousFileNameExpand ).
 
-'$set_absf'(Opts) :- !,
+set_absf(Opts) :- !,
     get_abs_file_parameter( verbose_file_search, Opts,Verbose ),
     get_abs_file_parameter( expand, Opts, PreviousFileNameExpand ),
     get_abs_file_parameter( file_errors, Opts, FileErrors ),
     set_prolog_flag( file_errors, FileErrors ),
-    set_prolog_flag( expand_file_name, PreviousFileNameExpand ),
+    set_prolog_flag( open_expands_filename, PreviousFileNameExpand ),
     set_prolog_flag( verbose_file_search,  Verbose ).
 
-'$restore_absf'(abs_entry(_OldF, D0, PreviousFileErrors, PreviousVerbose, PreviousFileNameExpand) ) :- !,
+restore_absf(abs_entry(_OldF, D0, PreviousFileErrors, PreviousVerbose, PreviousFileNameExpand) ) :- !,
     working_directory(_,D0),
-    set_prolog_flag( expand_file_name, PreviousFileNameExpand ),
+    set_prolog_flag( open_expands_filename, PreviousFileNameExpand ),
     set_prolog_flag( file_errors, PreviousFileErrors ),
     set_prolog_flag( verbose_file_search, PreviousVerbose ).
 
-'$absf_port'(answer, File, Opts, TrueFileName, State ) :-
-    '$absf_port'(exit, File, Opts, TrueFileName,State  ).
-'$absf_port'(exit, _File,  _Opts, TrueFileName, State ) :-
-    '$restore_absf'(State),
+absf_port(answer, File, Opts, TrueFileName, State ) :-
+    absf_port(exit, File, Opts, TrueFileName,State  ).
+absf_port(exit, _File,  _Opts, TrueFileName, State ) :-
+    restore_absf(State),
     absf_trace(' |------- exit: found  ~a', [TrueFileName]).
-'$absf_port'(redo, _File, Opts, _TrueFileName,  _State ):-
+absf_port(redo, _File, Opts, _TrueFileName,  _State ):-
     absf_trace(' !------- retry', []),
-    '$set_absf'(Opts).
-'$absf_port'(fail, File,_Opts, TrueFileName, _State) :-
+    set_absf(Opts).
+absf_port(fail, File,_Opts, TrueFileName, _State) :-
     absf_trace(' !------- failed.', []),
     % check if no solution
     current_prolog_flag( file_errors, error ),
-    throw_error(existence_error(file,File),absolute_file_name(File, TrueFileName, [File])).
-'$absf_port'(fail, _File,_Opts, _TrueFileName, State) :-
-        '$restore_absf'(State).
-'$absf_port'(!, _File, _Opts, _TrueFileName, _State ).
-'$absf_port'(exception(_),_File, _Opts, _TrueFileName, State ) :- 
-    '$restore_absf'(State).
-'$absf_port'(external_exception(_),_File, _Opts, _TrueFileName, State ) :-  
-    '$restore_absf'(State).
+    throw_file_error(error,error(existence_error(file,File),absolute_file_name(File, TrueFileName, [File]))).
+absf_port(fail, _File,_Opts, _TrueFileName, State) :-
+        restore_absf(State).
+absf_port(!, _File, _Opts, _TrueFileName, _State ).
+absf_port(exception(_),_File, _Opts, _TrueFileName, State ) :- 
+    restore_absf(State).
+absf_port(external_exception(_),_File, _Opts, _TrueFileName, State ) :-  
+    restore_absf(State).
 
-'$find_in_path'(Name, Opts, File) :-
+find_in_path(Name, Opts, File) :-
 	    '$library'(Name, Opts, Name1),
 	    absf_trace('library expansion  done: ~s',Name1),
 	    '$path2atom'(Name1,Name2),
@@ -133,31 +139,37 @@ absf_trace_component( _, _ ).
 	    '$suffix'(Name2, Opts, _, Name3),
 	    absf_trace('suffix  done ~s',Name3),
 	    '$glob'(Name3,Opts,Name4),
-	    absf_trace('glob  done ~s',Name5),
+	    absf_trace('glob  done ~s',Name4),
 	    get_abs_file_parameter( expand, Opts, Exp ),
-	    absf_trace('expansion  done ~s',Name5),
-	    (Exp = true-> expand_file_name(Name4,Names),
-			  absf_trace('expansion  done ~s',Names)
-	    ; Names = [Name4]),
-	    '$member'(Name5,Names),
+	    absf_trace('expansion  done ~s',Exp),
+	    (Exp == true,
+             expand_file_name(Name4,Names0),
+	     absf_trace('expansion  done ~s',Names0),
+             Names0 = [_|_]
+            ->
+             Names = Names0
+	    ;
+              Names = [Name4]
+             ),
+	    member(Name5,Names),
 	    absf_trace('pick ~s', Name5),
-	    '$clean_name'(Name5,Opts,File),
+	    clean_name(Name5,Opts,File),
 	    get_abs_file_parameter( file_type, Opts, Type ),
 	    get_abs_file_parameter( access, Opts, Access ),
 	    '$check_file'(File, Type, Access),
 	    ( get_abs_file_parameter( solutions, Opts, first ) -> ! ; true ).
-'$find_in_path'(user,_,user_input) :- !.
-'$find_in_path'(user_input,_,user_input) :- !.
-'$find_in_path'(user_output,_,user_ouput) :- !.
-'$find_in_path'(user_error,_,user_error) :- !.
+find_in_path(user,_,user_input) :- !.
+find_in_path(user_input,_,user_input) :- !.
+find_in_path(user_output,_,user_ouput) :- !.
+find_in_path(user_error,_,user_error) :- !.
 
-'$clean_name'(N0,_OPts,NF) :-
+clean_name(N0,_OPts,NF) :-
     is_absolute_file_name(N0),
     !,
     absolute_file_name(N0,NF).
-'$clean_name'(N0,_OPts,NF) :-
+clean_name(N0,_OPts,NF) :-
     absolute_file_name(N0,NF).    
-'$clean_name'(N0,_OPts,NF) :-
+clean_name(N0,_OPts,NF) :-
     recorded('$path',D,_),
     working_directory(D0,D),
     absolute_file_name(N0,NF),
@@ -190,6 +202,10 @@ absf_trace_component( _, _ ).
 '$path2atom'(A,A) :-
     atom(A),
     !.
+'$path2atom'(S,A) :-
+    string(S),
+    !,
+    atom_string(A,S).
 
 '$path2atom'(As,A) :-
     '$cat_file_name'(As,L,[]),
@@ -197,12 +213,18 @@ absf_trace_component( _, _ ).
 
 
 '$cat_file_name'(A/B, NA, IA	) :-
+    
     !,
     '$cat_file_name'(A, NA, RA),
     '$cat_file_name'(B, RA, IA).
 '$cat_file_name'(File, NFs, Fs) :-
     atom(File),
     !,
+    NFs = [File|Fs].
+'$cat_file_name'(SFile, NFs, Fs) :-
+    string(SFile),
+    !,
+    atom_string(File,SFile),
     NFs = [File|Fs].
 
 '$suffix'(F,_Opts,Ext,F) :-
@@ -212,7 +234,7 @@ absf_trace_component( _, _ ).
 '$suffix'(F,Opts,Ext,NF) :-
     (
 	get_abs_file_parameter( extensions, Opts, Exts ),
-	'$member'(Ext, Exts),
+        member(Ext, Exts),
 	absf_trace(' trying suffix ~a from ~w', [Ext,Exts])
     ;
     get_abs_file_parameter( file_type, Opts, Type ),
@@ -231,11 +253,12 @@ absf_trace_component( _, _ ).
     path_concat([F,G],NF).
 '$glob'(F,_Opts,F).
 
-% always verify if a directory
+% always verify if a directory, but take care to only
+% fail if it exists.
 '$check_file'(F, directory, _) :-
-        !,
-        exists_directory(F).
-
+    '$access_file'(F, exist),
+    !,
+    exists_directory(F).
 '$check_file'(_F, _Type, none) :- !.
 '$check_file'(F, _Type, exist) :-
     '$access_file'(F, exist). % if it has a type cannot be a directory..
@@ -313,7 +336,7 @@ add_to_path(New) :-
 */
 add_to_path(New,Pos) :-
 	atom(New), !,
-	'$check_path'(New,Str),
+	check_path(New,Str),
 	atom_codes(Path,Str),
 	'$add_to_path'(Path,Pos).
 
@@ -329,18 +352,22 @@ add_to_path(New,Pos) :-
 
 /**  @pred   remove_from_path(+Directory:atom) is det,deprecated
 
-@}
-
 */
-remove_from_path(New) :- '$check_path'(New,Path),
+remove_from_path(New) :- check_path(New,Path),
 
  			recorded('$path',Path,R), erase(R).
 
-'$check_path'(At,SAt) :- atom(At), !, atom_codes(At,S), '$check_path'(S,SAt).
-'$check_path'([],[]).
-'$check_path'([Ch],[Ch]) :- '$dir_separator'(Ch), !.
-'$check_path'([Ch],[Ch,A]) :- !, integer(Ch), '$dir_separator'(A).
-'$check_path'([N|S],[N|SN]) :- integer(N), '$check_path'(S,SN).
+check_path(At,SAt) :-
+    atom(At),
+    !,
+    atom_codes(At,S),
+    check_path(S,SAt).
+check_path([],[]).
+check_path([Ch],[Ch]) :- '$dir_separator'(Ch), !.
+check_path([Ch],[Ch,A]) :- !, integer(Ch), '$dir_separator'(A).
+check_path([N|S],[N|SN]) :-
+    integer(N),
+    check_path(S,SN).
 
 
 /**
@@ -444,12 +471,12 @@ is valid as well.
 absolute_file_name(File,TrueFileName0,LOpts0) :-
     %   must_be_of_type( atom, File ),
     % look for solutions
-    '$validate_absf'( File, TrueFileName0, LOpts0, LOpts, TrueFileName),
+    validate_absf( File, TrueFileName0, LOpts0, LOpts, TrueFileName),
     gated_call(
-	'$enter_absf'( File, LOpts, Opts, State),
-		   '$find_in_path'(File, Opts,TrueFileName),
+	enter_absf( File, LOpts, Opts, State),
+		   find_in_path(File, Opts,TrueFileName),
 		   Port,
-		   '$absf_port'(Port, File, Opts, TrueFileName, State)
+		   absf_port(Port, File, Opts, TrueFileName, State)
 	).
 
 
@@ -476,5 +503,24 @@ exists_source(Source, Path) :-
 file_exists(File) :-    
     absolute_file_name( File, _, [access(exist),
 				 file_errors(fail)]).
+
+/**	exists_source(+Source) is semidet.
+
+	True if Source (a term  valid   for  load_files/2) exists. Fails
+	without error if this is not the case. The predicate is intended
+	to be used with  :-  if,  as   in  the  example  below. See also
+	source_exports/2.
+
+```
+	:- if(exists_source(library(error))).
+	:- use_module_library(error).
+	:- endif.
+```
+*/
+
+exists_source(Source) :-
+	exists_source(Source, _Path).
+
+/** @} */
 
 

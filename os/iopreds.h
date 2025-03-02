@@ -37,16 +37,16 @@ extern bool Yap_initStream__(const char *filename, const char *func, int line,
 
 #define Yap_CheckStream(arg, kind, msg)                                        \
   Yap_CheckStream__(__FILE__, __FUNCTION__, __LINE__, arg, kind, msg)
-extern int Yap_CheckStream__(const char *, const char *, int, Term, int,
+extern int Yap_CheckStream__(const char *, const char *, int, Term, estream_f,
                              const char *);
 #define Yap_CheckTextStream(arg, kind, msg)                                    \
   Yap_CheckTextStream__(__FILE__, __FUNCTION__, __LINE__, arg, kind, msg)
-extern int Yap_CheckTextStream__(const char *, const char *, int, Term, int,
+extern int Yap_CheckTextStream__(const char *, const char *,int,Term, estream_f,
                                  const char *);
 
 #define Yap_CheckTextReadStream(arg, msg)                                      \
   Yap_CheckTextReadStream__(__FILE__, __FUNCTION__, __LINE__, arg, msg)
-extern int Yap_CheckTextReadStream__(const char *, const char *, int, Term,
+extern int Yap_CheckTextReadStream__(const char *, const char *,int, Term,
                                      const char *);
 #define Yap_CheckTextWriteStream(arg, msg)                                     \
   Yap_CheckTextWriteStream__(__FILE__, __FUNCTION__, __LINE__, arg, msg)
@@ -55,11 +55,11 @@ extern int Yap_CheckTextWriteStream__(const char *, const char *, int, Term,
 
 #define Yap_CheckBinaryStream(arg, kind, msg)                                  \
   Yap_CheckBinaryStream__(__FILE__, __FUNCTION__, __LINE__, arg, kind, msg)
-extern int Yap_CheckBinaryStream__(const char *, const char *, int, Term, int,
+extern int Yap_CheckBinaryStream__(const char *, const char *, int, Term, estream_f,
                                    const char *);
 
 static inline StreamDesc *Yap_GetStreamHandle(Term t) {
-  int sno = Yap_CheckStream(t, 0, "stream search");
+  int sno = Yap_CheckStream(t, (estream_f)0, "stream search");
   if (sno < 0)
     return NULL;
   return GLOBAL_Stream + sno;
@@ -112,7 +112,7 @@ static inline Int GetCurInpLineStart(StreamDesc *inp_stream) {
 }
 
 static inline Int GetCurInpOffset(StreamDesc *inp_stream) {
-  return (inp_stream->charcount + 1 - inp_stream->linestart);
+  return (inp_stream->charcount - 1 - inp_stream->linestart);
 }
 
 static inline Int GetCurInpPos(StreamDesc *inp_stream) {
@@ -138,13 +138,13 @@ extern bool UnixIOError__(const char *, const char *, int, int, io_kind_t, Term,
 extern int GetFreeStreamD(void);
 extern Term Yap_MkStream(int n);
 
-extern bool Yap_PrintWarning(Term twarning);
-
 extern void Yap_WriteAtom(struct stream_desc *s, Atom atom);
 extern bool Yap_WriteTerm(int output_stream, Term t, Term opts USES_REGS);
 extern Term Yap_scan_num(struct stream_desc *, bool throw_on);
 
 extern void Yap_DefaultStreamOps(StreamDesc *st);
+extern void Yap_default_peek(StreamDesc *st);
+extern void Yap_EOF_Stream(StreamDesc *st);
 extern void Yap_PipeOps(StreamDesc *st);
 extern void Yap_MemOps(StreamDesc *st);
 extern bool Yap_CloseMemoryStream(int sno);
@@ -152,9 +152,9 @@ extern void Yap_ConsolePipeOps(StreamDesc *st);
 extern void Yap_SocketOps(StreamDesc *st);
 extern void Yap_ConsoleSocketOps(StreamDesc *st);
 extern bool Yap_ReadlineOps(StreamDesc *st);
-extern int Yap_OpenBufWriteStream(USES_REGS1);
 extern void Yap_ConsoleOps(StreamDesc *s);
 
+extern Term Yap_israndgen(Term inp);
 extern void Yap_InitRandomPreds(void);
 extern void Yap_InitSignalPreds(void);
 extern void Yap_InitTimePreds(void);
@@ -196,11 +196,6 @@ extern int Yap_peekWithSeek(int sno);
 extern int Yap_peekWide(int sno);
 extern int Yap_peekChar(int sno);
 
-extern int console_post_process_read_char(int, StreamDesc *);
-extern int console_post_process_eof(StreamDesc *);
-extern int post_process_read_wchar(int, size_t, StreamDesc *);
-extern int post_process_weof(StreamDesc *);
-
 extern bool is_same_tty(FILE *f1, FILE *f2);
 
 extern int ISOWGetc(int sno);
@@ -234,8 +229,9 @@ extern Term Yap_StreamUserName(int sno);
 
 extern void count_output_char(int ch, StreamDesc *s);
 
-char *Yap_VFAlloc(const char *path);
+extern char *Yap_VFAlloc(const char *path);
 
+extern Term Yap_memStreamToTerm(int output_stream, Functor f, Term inp);
 inline static YAP_Atom StreamFullName(int i) {
   if (GLOBAL_Stream[i].name)
     return GLOBAL_Stream[i].name;
@@ -259,6 +255,7 @@ inline static Term StreamName(int i) {
     return GLOBAL_Stream[i].user_name;
   return MkAtomTerm((Atom)StreamFullName(i));
 }
+
 
 inline static void console_count_output_char(int ch, StreamDesc *s) {
   CACHE_REGS
@@ -286,6 +283,11 @@ inline static void console_count_output_char(int ch, StreamDesc *s) {
   }
 }
 
+extern int ConsoleGetc(int sno);
+extern int ConsolePutc(int sno, int ch);
+
+extern int ReadlineGetc(int sno);
+  
 inline static Term StreamPositionToTerm(int charcount, int linecount,
                                         int linestart) {
   CACHE_REGS
@@ -300,7 +302,7 @@ inline static Term StreamPositionToTerm(int charcount, int linecount,
 inline static Term StreamPosition(int sno) {
   CACHE_REGS
     
-  Int cpos;
+  int cpos;
   cpos = GLOBAL_Stream[sno].charcount;
   LOCAL_StartCharCount = cpos;
   LOCAL_StartLineCount = GLOBAL_Stream[sno].linecount;
@@ -323,8 +325,13 @@ static inline void freeBuffer(const void *ptr) {
   free((void *)ptr);
 }
 
-extern int Yap_encoding_error(YAP_Int ch, int code, struct stream_desc *st);
-extern int Yap_symbol_encoding_error(YAP_Int ch, int code,
+extern int Yap_encoding_error(int ch, seq_type_t code, struct stream_desc *st);
+extern int Yap_symbol_encoding_error(int ch, seq_type_t code,
                                      struct stream_desc *st, const char *s);
 extern int Yap_bad_nl_error(Term t, struct stream_desc *st);
 #endif
+
+extern  int post_process_eof( StreamDesc *s);
+extern  int console_post_process_read_char(int ch, StreamDesc *s);
+extern  int post_process_read_char(int ch, StreamDesc *s);
+extern  int post_process_read_wchar(int ch, size_t n, StreamDesc *s);

@@ -15,36 +15,38 @@
 *									 *
 *************************************************************************/
 
-///    @file cmppreds.c
-
 /**
-    @defgroup Comparing_Terms Comparing Terms
-@ingroup Builtins
+* @file cmppreds.c
+*
+* Implements term and arithmetic comparison.
+*
+* @defgroup ComparingTerms Comparing Prolog Terms
 
 The following predicates are used to compare and order terms, using the
-standard ordering:
-
-+
-variables come before numbers, numbers come before atoms which in turn
-come before compound terms, i.e.: variables @< numbers @< atoms @<
-compound terms.
-+  Variables are roughly ordered by "age" (the "oldest" variable is put
-first);
-+
-Floating point numbers are sorted in increasing order;
-+
-Rational numbers are sorted in increasing order;
-+
-Integers are sorted in increasing order;
-+
-Atoms are sorted in lexicographic order;
-+
-Compound terms are ordered first by arity of the main functor, then by
-the name of the main functor, and finally by their arguments in
-left-to-right order.
+standard ordering.
 
 @{
 
+Prolog uses a standard ordering to compare terms ordering is defined as follows:
+
++ Variables come before numbers, numbers come before atoms which in turn
+come before compound terms, i.e.: variables '@<' numbers '@<' atoms '@<'
+compound terms.
+
++  Variables are roughly ordered by "age" (the "oldest" variable is put
+first);
+
++ Floating point numbers are sorted in increasing order;
+
++ Rational numbers are sorted in increasing order;
+
++ Integers are sorted in increasing order;
+
++ Atoms are sorted in lexicographic order;
+
++ Compound terms are ordered first by arity of the main functor, then by
+the name of the main functor, and finally by their arguments in
+left-to-right order.
 
 
 */
@@ -79,13 +81,16 @@ static Int a_gen_le(Term, Term);
 static Int a_gen_gt(Term, Term);
 static Int a_gen_ge(Term, Term);
 
-#define rfloat(X) (X > 0.0 ? 1 : (X == 0.0 ? 0 : -1))
-
 static int cmp_atoms(Atom a1, Atom a2) {
   return strcmp(RepAtom(a1)->StrOfAE, RepAtom(a2)->StrOfAE);
 }
 
-static Int compare_complex(register CELL *pt0, register CELL *pt0_end,
+static int rfloat(Float a1, Float a2) {
+  return
+  a1>a2 ? 1 : a1 < a2 ? -1 : 0;
+}
+
+static  Int compare_complex(register CELL *pt0, register CELL *pt0_end,
                            register CELL *pt1) {
   CACHE_REGS
   register CELL **to_visit = (CELL **)HR;
@@ -139,7 +144,7 @@ loop:
 	  goto done;
       } else if (IsFloatTerm(d0)) {
         if (IsFloatTerm(d1)) {
-          out = rfloat(FloatOfTerm(d0) - FloatOfTerm(d1));
+          out = rfloat(FloatOfTerm(d0),FloatOfTerm(d1));
        } else if (IsRefTerm(d1)) {
           out = 1;
         } else {
@@ -394,7 +399,7 @@ inline static Int compare(Term t1, Term t2) /* compare terms t1 and t2	 */
       switch ((CELL)fun1) {
       case double_e: {
         if (IsFloatTerm(t2))
-          return (rfloat(FloatOfTerm(t1) - FloatOfTerm(t2)));
+          return (rfloat(FloatOfTerm(t1), FloatOfTerm(t2)));
         if (IsRefTerm(t2))
           return 1;
         return -1;
@@ -493,19 +498,47 @@ inline static Int compare(Term t1, Term t2) /* compare terms t1 and t2	 */
 Int Yap_compare_terms(Term d0, Term d1) {
   return compare(Deref(d0), Deref(d1));
 }
+ 
+/** @pred  X \= Y is iso
+
+Terms  _X_ and  _Y_ are not strictly identical.
+*/
+static Int a_noteq(Term t1, Term t2) { return (compare(t1, t2) != 0); }
+
+/** @pred   X @< Y is iso
+Term  _X_ is before _Y_ in the standard order.
+
+*/
+static Int a_gen_lt(Term t1, Term t2) { return (compare(t1, t2) < 0); }
+
+/** @pred   X=< Y is iso
+Term  _X_ is before term  _Y_ in the standard order, or they are the same term.
+
+*/
+static Int a_gen_le(Term t1, Term t2) { return (compare(t1, t2) <= 0); }
+
+/** @pred X @> Y  is iso
+
+
+Term  _X_ is after term  _Y_ in the standard order
+*/
+static Int a_gen_gt(Term t1, Term t2) { return compare(t1, t2) > 0; }
+
+/** @pred X @>= Y is iso
+
+Term  _X_ is after term  _Y_ in the standard order, or they are the same term.
+*/
+static Int a_gen_ge(Term t1, Term t2) { return compare(t1, t2) >= 0; }
+
 
 /** @pred  compare( _C_, _X_, _Y_) is iso
 
-
-As a result ofco mparing  _X_ and  _Y_,  _C_ may take one of
+As a result of comparing  _X_ and  _Y_,  _C_ may take one of
 the following values:
 
-+
-`=` if  _X_ and  _Y_ are identical;
-+
-`<` if  _X_ precedes  _Y_ in the defined order;
-+
-`>` if  _Y_ precedes  _X_ in the defined order;
++ `=` if  _X_ and  _Y_ are identical;
++ `<` if  _X_ precedes  _Y_ in the defined order;
++ `>` if  _Y_ precedes  _X_ in the defined order;
 
 */
 Int p_compare(USES_REGS1) { /* compare(?Op,?T1,?T2)	 */
@@ -534,35 +567,6 @@ Int p_compare(USES_REGS1) { /* compare(?Op,?T1,?T2)	 */
   return Yap_unify_constant(ARG1, MkAtomTerm(p));
 }
 
-/** @pred  X \==  Y is iso
-
-Terms  _X_ and  _Y_ are not strictly identical.
-*/
-static Int a_noteq(Term t1, Term t2) { return (compare(t1, t2) != 0); }
-
-static Int a_gen_lt(Term t1, Term t2) { return (compare(t1, t2) < 0); }
-
-/** @pred  X @=< Y is iso
-
-
-Term  _X_ does not follow term  _Y_ in the standard order.
-
-*/
-static Int a_gen_le(Term t1, Term t2) { return (compare(t1, t2) <= 0); }
-
-/** @pred  X @>  Y is iso
-
-
-Term  _X_ does not follow term  _Y_ in the standard order
-*/
-static Int a_gen_gt(Term t1, Term t2) { return compare(t1, t2) > 0; }
-
-/** @pred  X @>= Y is iso
-
-Term  _X_ does not precede term  _Y_ in the standard order.
-*/
-static Int a_gen_ge(Term t1, Term t2) { return compare(t1, t2) >= 0; }
-
 /**
 @}
 */
@@ -570,7 +574,7 @@ static Int a_gen_ge(Term t1, Term t2) { return compare(t1, t2) >= 0; }
 /**
 
    @defgroup arithmetic_cmps Arithmetic Comparison Predicates
-   @ingroup arithmetic
+   @ingroup Arithmetic
 
    Comparison of Numeric Expressions. Both arguments must be valid ground
    expressions at time of call.
@@ -589,11 +593,11 @@ inline static Int flt_cmp(Float dif) {
 
 static Int a_cmp(Term t1, Term t2 USES_REGS) {
   if (IsVarTerm(t1)) {
-    Yap_ArithError(INSTANTIATION_ERROR, t1,
+    Yap_ThrowError(INSTANTIATION_ERROR, t1,
                    "while doing arithmetic comparison");
   }
   if (IsVarTerm(t2)) {
-    Yap_ArithError(INSTANTIATION_ERROR,  t2,
+    Yap_ThrowError(INSTANTIATION_ERROR,  t2,
                    "while doing arithmetic comparison");
   }
   if (IsFloatTerm(t1) && IsFloatTerm(t2)) {
@@ -617,7 +621,7 @@ static Int a_cmp(Term t1, Term t2 USES_REGS) {
       Float f2 = FloatOfTerm(t2);
 #if HAVE_ISNAN
       if (isnan(f2)) {
-        Yap_ArithError(EVALUATION_ERROR_UNDEFINED, t2,
+        Yap_ThrowError(EVALUATION_ERROR_UNDEFINED, t2,
                        "trying to evaluate nan");
       }
 #endif
@@ -633,7 +637,7 @@ static Int a_cmp(Term t1, Term t2 USES_REGS) {
     Float f1 = FloatOfTerm(t1);
 #if HAVE_ISNAN
     if (isnan(f1)) {
-      Yap_ArithError(EVALUATION_ERROR_UNDEFINED, t1,
+      Yap_ThrowError(EVALUATION_ERROR_UNDEFINED, t1,
                      "trying to evaluate nan");
     }
 #endif
@@ -650,7 +654,7 @@ static Int a_cmp(Term t1, Term t2 USES_REGS) {
       Float f2 = FloatOfTerm(t2);
 #if HAVE_ISNAN
       if (isnan(f2)) {
-        Yap_ArithError(EVALUATION_ERROR_UNDEFINED, t2,
+        Yap_ThrowError(EVALUATION_ERROR_UNDEFINED, t2,
                        "trying to evaluate nan");
       }
 #endif
@@ -673,7 +677,7 @@ static Int a_cmp(Term t1, Term t2 USES_REGS) {
         Float f2 = FloatOfTerm(t2);
 #if HAVE_ISNAN
         if (isnan(f2)) {
-          Yap_ArithError(EVALUATION_ERROR_UNDEFINED, t2,
+          Yap_ThrowError(EVALUATION_ERROR_UNDEFINED, t2,
                          "trying to evaluate nan");
         }
 #endif
@@ -685,9 +689,9 @@ static Int a_cmp(Term t1, Term t2 USES_REGS) {
       }
     }
 #endif
-  } else {
-    return FALSE;
-  }
+    } else {
+      return FALSE;
+    }
 }
 
 Int Yap_acmp(Term t1, Term t2 USES_REGS) {
@@ -705,7 +709,7 @@ static Int p_acomp(USES_REGS1) { /* $a_compare(?R,+X,+Y) */
 }
 
 /**
-   @pred +_X_ =:= _Y_ is iso
+   @pred =:=( _X,_Y_ ) is iso
    Equality of arithmetic expressions
 
    The value of the expression  _X_ is equal to the value of expression _Y_.
@@ -743,8 +747,9 @@ static Int a_eq(Term t1, Term t2) {
   return out == 0;
 }
 
-/*
-   @pred +_X_ =\\= _Y_ is iso
+/*q
+    @pred =\=( _X,_Y_ ) is iso 
+
     Difference of arithmetic expressions
 
    The value of the expression  _X_ is different from the value of expression
@@ -757,7 +762,7 @@ static Int a_dif(Term t1, Term t2) {
 }
 
 /**
-   @pred +_X_ \> +_Y_ is iso
+    @pred <=( _X,_Y_ ) is iso
    Greater than arithmetic expressions
 
    The value of the expression  _X_ is less than or equal to the value
@@ -770,7 +775,7 @@ static Int a_gt(Term t1, Term t2) { /* A > B		 */
 }
 
 /**
-   @pred +X >= +Y is iso
+   @pred >=( _X,_Y_ ) is iso
    Greater than or equal to arithmetic expressions
 
    The value of the expression  _X_ is greater than or equal to the
@@ -783,7 +788,8 @@ static Int a_ge(Term t1, Term t2) { /* A >= B		 */
 }
 
 /**
-   @pred +X < +Y is iso
+   @pred <( _X,_Y_ ) is iso
+
    Lesser than arithmetic expressions
 
    The value of the expression  _X_ is less than the value of expression
@@ -797,7 +803,8 @@ static Int a_lt(Term t1, Term t2) { /* A < B       */
 
 /**
  *
- @pred +X =< +Y
+   @pred >( _X,_Y_ ) is iso
+
   Lesser than or equal to arithmetic expressions
 
 

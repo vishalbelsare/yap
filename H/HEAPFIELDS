@@ -77,6 +77,9 @@ OPCODE		UNDEF_OPCODE		MkOp _undef_p
 OPCODE		RETRY_USERC_OPCODE	MkOp _retry_userc
 OPCODE		CALL_OPCODE		MkOp _call
 OPCODE		FCALL_OPCODE		MkOp _fcall
+OPCODE		YSTOP_OPCODE		MkOp _Ystop
+OPCODE		NSTOP_OPCODE		MkOp _Nstop
+OPCODE		TRUST_FAIL_OPCODE	MkOp _trust_fail
 
 /* atom tables */
 UInt		NOfAtoms		void void
@@ -110,6 +113,8 @@ Term		SWI_MODULE		MkAT AtomSwi
 Term		DBLOAD_MODULE		MkAT AtomDBLoad
 Term		RANGE_MODULE		MkAT AtomRange
 Term		ERROR_MODULE		MkAT AtomError
+Term		LISTS_MODULE		MkAT AtomError
+Term		MAPLIST_MODULE		MkAT AtomError
 
 //
 // Module list
@@ -153,7 +158,7 @@ struct pred_entry *PredTrue		    MkPred AtomTrue 0 PROLOG_MODULE
 struct pred_entry  *WakeUpCode		MkPred AtomWakeUpGoal 2 PROLOG_MODULE
 #endif
 struct pred_entry *PredCsult		MkPred FunctorCsult PROLOG_MODULE
-struct pred_entry *PredDollarCatch         MkPred FunctorCatch PROLOG_MODULE
+struct pred_entry *PredCatchImplementation         MkPred CatchImplementation PROLOG_MODULE
 #ifdef YAPOR
 struct pred_entry *PredGetwork		MkPred AtomGetwork 0 PROLOG_MODULE
 #endif /* YAPOR */
@@ -180,8 +185,6 @@ struct pred_entry *PredWithin		MkPred FunctorExecuteWithin   PROLOG_MODULE
 struct pred_entry *PredLastWithin		MkPred FunctorLastExecuteWithin   PROLOG_MODULE
 struct pred_entry *PredComma		MkPred FunctorComma      PROLOG_MODULE
 struct pred_entry *PredOr		MkPred FunctorOr      PROLOG_MODULE
-struct pred_entry *PredInnerComma		MkPred FunctorInnerComma   PROLOG_MODULE
-struct pred_entry *PredInnerOr		MkPred FunctorInnerOr      PROLOG_MODULE
 struct pred_entry *PredCatch		MkPred FunctorCatch   PROLOG_MODULE
 struct pred_entry *PredCurrentChoicePoint	MkPred FunctorCurrentChoicePoint   PROLOG_MODULE
        

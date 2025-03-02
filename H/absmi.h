@@ -105,7 +105,6 @@ register struct yami *P1REG asm("bp"); /* can't use yamop before Yap.h */
 #define TR_IN_MEM 1
 #endif /* sparc_ */
 
-
 #if defined(__arm__) || defined(__thumb__) || defined(mips) ||                 \
     defined(__mips64) || defined(__arch64__)
 
@@ -178,21 +177,22 @@ register struct yami *P1REG asm("bp"); /* can't use yamop before Yap.h */
 #include <stdio.h>
 #endif
 
+
+#if USE_THREADED_CODE
+extern const char *Yap_op_names[];
+#endif
+
 #if PUSH_REGS
 
 /***************************************************************
  * Trick to copy REGS into absmi local environment              *
  ***************************************************************/
-INLINE_ONLY void init_absmi_regs(REGSTORE *absmi_regs);
-
 /* regp is a global variable */
 
 INLINE_ONLY void init_absmi_regs(REGSTORE *absmi_regs) {
   CACHE_REGS
   memmove(absmi_regs, &Yap_REGS, sizeof(REGSTORE));
 }
-
-INLINE_ONLY void restore_absmi_regs(REGSTORE *old_regs);
 
 INLINE_ONLY void restore_absmi_regs(REGSTORE *old_regs) {
   CACHE_REGS
@@ -1057,27 +1057,6 @@ typedef CELL label;
  * Lookup PredEntry Structure
  *
  */
-
-#define pred_entry(X)                                                          \
-  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->StateOfPred))))
-#define pred_entry_from_code(X)                                                \
-  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->CodeOfPred))))
-#define PredFromDefCode(X)                                                     \
-  ((PredEntry *)(Unsigned(X) - (CELL)(&(((PredEntry *)NULL)->OpcodeOfPred))))
-#define PredFromExpandCode(X)                                                  \
-  ((PredEntry *)(Unsigned(X) -                                                 \
-                 (CELL)(&(((PredEntry *)NULL)->cs.p_code.ExpandCode))))
-#define PredCode(X) pred_entry(X)->CodeOfPred
-#define PredOpCode(X) pred_entry(X)->OpcodeOfPred
-#define TruePredCode(X) pred_entry(X)->TrueCodeOfPred
-#define PredFunctor(X) pred_entry(X)->FunctorOfPred
-#define PredArity(X) pred_entry(X)->ArityOfPE
-
-#define FlagOff(Mask, w) !(Mask & w)
-#define FlagOn(Mask, w) (Mask & w)
-#define ResetFlag(Mask, w) w &= ~Mask
-#define SetFlag(Mask, w) w |= Mask
-
 /**********************************************************************
  *                                                                    *
  *                         X register access                          *
@@ -2316,11 +2295,11 @@ static inline UInt Yap_regtoregno(wamreg reg) {
 #define copy_jmp_addressa(X)
 #endif
 
-static inline void prune(choiceptr cp USES_REGS) {
+static inline void prune(choiceptr cp, choiceptr b USES_REGS) {
 #ifdef YAPOR
   CUT_prune_to(cp);
 #endif /* YAPOR */
-  if (B >= cp)
+  if (b >= cp)
     return;
   if (SHOULD_CUT_UP_TO(B, cp)) {
     if (ASP > (CELL *)PROTECT_FROZEN_B(B))
@@ -2435,6 +2414,15 @@ extern yamop *headoftrace;
   set_pc();\								\
     CACHE_A1();\
   ENDD(d0);
+#define DELAY(F)                                            \
+  { \
+  saveregs();                                                                  \
+  F(PASS_REGS1);                                                          \
+  setregs();       \
+    set_pc();					\
+    CACHE_A1();					\
+}
+
 #else
 #define PROCESS_INT(F, C)                                            \
   { \
@@ -2462,6 +2450,17 @@ extern yamop *headoftrace;
     set_pc();					\
     CACHE_A1();					\
 }
+
+#define DELAY(F)                                            \
+  { \
+  saveregs();                                                                  \
+  F(PASS_REGS1);                                                          \
+  setregs();       \
+    set_pc();					\
+    CACHE_A1();					\
+}
+
+
 #endif
 
 /// after interrupt dispatch
@@ -2472,10 +2471,10 @@ extern yamop *headoftrace;
 #define HAS_INT(D)       (D>=0) 
 
 
-#define PROCESS_INTERRUPTED_PRUNE(F)	\
+#define PROCESS_INTERRUPTED_PRUNE(F)		\
   {				\
   saveregs();                                                   \
-   PredEntry *rc = F(PASS_REGS1);   \
+  PredEntry *rc = F(PASS_REGS1);				\
   setregs();	   				\
   if (rc) {\
     set_pc();						\

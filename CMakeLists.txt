@@ -10,6 +10,10 @@ cmake_minimum_required(VERSION 3.18)
 
 project(YAP)
 
+set(YAP_MAJOR_VERSION 7)
+set(YAP_MINOR_VERSION 6)
+set(YAP_PATCH_VERSION 0)
+
 # Sets the version of CMake required to build the native
 # library. You should either keep the default value or  pass a
 # value of 3.4.0 or lower.fg
@@ -260,13 +264,14 @@ IF (WITH_SWIG)
 ENDIF (WITH_SWIG)
 
 
-OPTION(WITH_DOXYGEN " Enable the use of Doxygen for docs" ON)
-OPTION(WITH_LibXml2 " Enable the  XML2 library" Off)
+OPTION(WITH_DOXYGEN " Enable the use of Doxygen for docs" On)
+OPTION(WITH_XML2YAP " Enable the  XML2YAP library" On)
 OPTION(WITH_XML " Enable the Prolog XML library" ${WITH_PACKAGES})
 OPTION(WITH_CLPBN " Enable the CLPBN and PFL probabilistic languages" ${WITH_CLPBN})
 OPTION(WITH_HORUS " Enable the HORUS inference libraray for CLPBN and PFL" ${WITH_PACKAGES})
 option(WITH_Gecode "interface gecode constraint solver" ${WITH_PACKAGES})
 option(WITH_LBFGS    "interface  with lbfgs" ${WITH_PACKAGES})
+option(WITH_SAT    "interface  with sat solvers" ${WITH_PACKAGES})
 option(WITH_PRISM    "use PRISM system in YAP" ${WITH_PACKAGES})
 option(WITH_Python3  "Allow Python->YAP  and YAP->Python" ${WITH_SWIG})
 option(WITH_R  "Use R Interface" ${WITH_PACKAGES})
@@ -420,7 +425,8 @@ if ($ENV{CONDA_BUILD}x STREQUAL "1x" )
   set(YAP_IS_MOVABLE 1)
 
 endif()
-if (WITH_Threads)
+
+if(WITH_Threads)
   include(Threads)
     set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS THREADS=1 USE_PTHREAD_LOCKING=1)
 SET(MAX_THREADS 1024)
@@ -454,7 +460,7 @@ set(YAP_PLDIR  ${CMAKE_INSTALL_FULL_DATADIR}/Yap)
 
 set(YAP_INSTALL_INCLUDEDIR ${CMAKE_INSTALL_INCLUDEDIR}/Yap)
 set(YAP_INSTALL_LIBDIR ${CMAKE_INSTALL_LIBDIR})
-set(YAP_INSTALL_DLLDIR ${YAP_DLLDIR})
+set(YAP_INSTALL_DLLDIR ${CMAKE_INSTALL_LIBDIR})
 if (ANDROID)
   set(YAP_INSTALL_DATADIR ${CMAKE_SOURCE_DIR}/../yaplib/src/generated/assets/Yap)
 else()
@@ -476,7 +482,6 @@ if  (NOT CUDD_FOUND)
 endif()
 
 if (CUDD_FOUND)
-           add_subDIRECTORY(packages/cudd)
   add_subDIRECTORY(packages/bdd)
 
 endif()
@@ -503,10 +508,6 @@ set(pl_boot_library "" CACHE INTERNAL "prolog boot files")
 #   console/LGPL/pl-ntmain.c
 # )
 set(YAP_FOUND ON)
-
-set(YAP_MAJOR_VERSION 7)
-set(YAP_MINOR_VERSION 3)
-set(YAP_PATCH_VERSION 0)
 
 set(YAP_FULL_VERSION
   ${YAP_MAJOR_VERSION}.${YAP_MINOR_VERSION}.${YAP_PATCH_VERSION})
@@ -564,7 +565,7 @@ set(ALIGN_LONGS 1)
 #ensure best access to slots in environments
 set(MSHIFTOFFS 1)
 
-set(C_COMPILER CMAKE_C_COMPILER_ID)
+set(C_COMPILER CMAKE_C_COMPILER_ID )
 
 if (${C_COMPILER} MATCHES "GNU")
   set(HAVE_GCC 1)
@@ -573,6 +574,7 @@ endif ()
 # compatible compilers
 if (${C_COMPILER} MATCHES "Clang")
   set(HAVE_GCC 1)
+  set(HAVE_CLANG 1)
 endif ()
 
 if (${C_COMPILER} MATCHES "Intel")
@@ -621,9 +623,9 @@ if (HAVE_GCC)
   set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS -Wall)
   if (${C_COMPILER} MATCHES "GNU")
     set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Release>:-O3;-fomit-frame-pointer;-fstrict-aliasing;-freorder-blocks;-fsched-interblock>)
-    set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Debug>:-g3 -fdebug-cpp>)
+    set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Debug>:-ggdb3;-fopenmp>)
   else ()
-    set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Release>:-O3;-fstrict-aliasing;-freorder-blocks;-fsched-interblock>)
+    set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Release>:-O3;-fstrict-aliasing;-fsched-interblock>)
     set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Debug>:-glldb -fdebug-macro>)
   endif ()
   set_property(DIRECTORY APPEND PROPERTY COMPILE_OPTIONS -fexceptions)
@@ -705,7 +707,6 @@ List(APPEND YLIBS $<TARGET_OBJECTS:libOPTYap>)
 List(APPEND YLIBS $<TARGET_OBJECTS:libYAPOs>)
 #List(APPEND YLIBS $<TARGET_OBJECTS:YAPReadline>)
 List(APPEND YLIBS $<TARGET_OBJECTS:utf8proc>)
-List(APPEND YLIBS $<TARGET_OBJECTS:myddas>)
 List(APPEND YLIBS $<TARGET_OBJECTS:libswi>)
 if (WIN32 OR ANDROID)
   List(APPEND YLIBS $<TARGET_OBJECTS:YAP++>)
@@ -714,6 +715,7 @@ if (WIN32 OR ANDROID)
     list (APPEND WINDLLS ${PYTHON_LIBRARIES})
   endif ()
   if (ANDROID)
+    List(APPEND YLIBS $<TARGET_OBJECTS:YAPmyddas>)
     List(APPEND YLIBS $<TARGET_OBJECTS:YAPsqlite3>)
     List(APPEND YLIBS $<TARGET_OBJECTS:DROID>)
     set(ANDROID_LIBRARIES ${CMAKE_SOURCE_DIR}/../sqlite-android/jni/${ANDROID_ABI}/libsqliteX.so  android log)
@@ -804,8 +806,17 @@ if (WITH_JIT)
 endif (WITH_JIT)
 
 
-#       add_subDIRECTORY(packages/raptor)
+if (WITH_Raptor2)
 
+add_subDIRECTORY(packages/raptor)
+
+endif()
+
+if (WITH_XML2YAP)
+
+add_subDIRECTORY(packages/xml2yap)
+
+endif()
 
 if (WITH_XML)
 
@@ -814,13 +825,21 @@ if (WITH_XML)
 endif ()
 
 
+if (WITH_CUDA)
+#  add_subDIRECTORY (packages/cuda)
 
-# add_subDIRECTORY (packages/cuda)
+endif()
 
+if (WITH_Gecode)
 add_subDIRECTORY(packages/gecode)
+endif()
 
 if (WITH_LBFGS)
   add_subDIRECTORY(packages/yap-lbfgs)
+endif ()
+
+if (WITH_SAT)
+  add_subDIRECTORY(packages/sat)
 endif ()
 
 
@@ -919,18 +938,13 @@ ENDIF (WITH_CLPBN)
 
 IF (WITH_CPLINT)
    if (CUDD_FOUND)
-add_subDIRECTORY(packages/cplint)
+#add_subDIRECTORY(packages/cplint)
 endif()
 ENDIF (WITH_CPLINT)
 
 
 IF (WITH_DOXYGEN)
   include (../docs/Doxyfile)
-endif()
-if (WITH_MINISAT)
-
-  add_subDIRECTORY(packages/swi-minisat2)
-
 endif()
 
 if (WITH_CLPQR)
@@ -983,7 +997,7 @@ if (WIN32)
 
   if (MSVC)
     set(MSVC_RUNTIME "dynamic")
-  ENDIF (MSVC)
+ ENDIF (MSVC)
 
   target_link_libraries(libYap wsock32 ws2_32 shlwapi)
 
@@ -1006,7 +1020,7 @@ if (NOT ANDROID)
 
 endif()
 
-add_subdirectory(library/lammpi)
+add_subdirectory(library/mpi)
 
 add_subDIRECTORY(packages/python)
 
@@ -1035,22 +1049,26 @@ configure_file(${CMAKE_CURRENT_LIST_DIR}/GitSHA1.c.in GitSHA1.c @ONLY)
 feature_summary(DESCRIPTION "Packages found:"
   WHAT  ALL
   )
+set (CPACK_PROJECT YAP)
+set (CPACK_DEBIAN_PACKAGE_MAINTAINER vscosta@fc.up.pt)
+set (CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+set(CPACK_DEBIAN_VERSION ${YAP_FVERSION})
+
+set(CPACK_DEBIAN_PACKAGE_MAJOR_VERSION 7)
+set(CPACK_DEBIAN_PACKAGE_MINOR_VERSION 4)
+set(CPACK_DEBIAN_PACKAGE_PATCH_VERSION 0)
 
 set(CPACK_PACKAGE_VENDOR "ANY")
 set(CPACK_COMPONENTS_GROUPING "IGNORE")
 
-set( CPACK_DEB_COMPONENT_INSTALL On)
+set( CPACK_DEB_COMPONENT_INSTALL OFF)
 set( CPACK_PACKAGE_CONTACT "vscosta@fc.up.pt")
 
 set( CPACK_RPM_COMPONENT_INSTALL On)
 
-include(CPack)
-cpack_add_component(R
-                    DISPLAY_NAME "YAP4R"
-                    DESCRIPTION "YAP Interface to R")
-cpack_add_component(MPI
-                    DISPLAY_NAME "MPI4YAP"
-                    DESCRIPTION "YAP Interface to MPI")
 
+
+include(CPack)
 
 

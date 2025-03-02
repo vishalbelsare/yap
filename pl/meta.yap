@@ -1,11 +1,18 @@
 /**
 
   @file meta.yap
+@brief meta-expansion of programs
 
-  @defgroup YAPMetaPredicates Using Meta-Calls with Modules
+*/
+
+/**
+  @defgroup YAPMeta  Meta-Calls with Modules
  @ingroup YAPModules
+ @brief Meta-calls and the module system
  @{
+*/
 
+/*
   @pred meta_predicate(G1 , Gj , Gn) is directive
 
 Declares that this predicate manipulates references to predicates.
@@ -25,9 +32,9 @@ For example, the declaration for call/1 and setof/3 are:
 
 meta_predicate declaration
  implemented by asserting
-
+```
 meta_predicate(SourceModule,Declaration)
-
+```
 */
 
 % directive now meta_predicate Ps :- $meta_predicate(Ps).
@@ -44,6 +51,9 @@ meta_predicate(SourceModule,Declaration)
 % I assume the clause has been processed, so the
 % var case is long gone! Yes :)
 
+'$clean_cuts'(V,V):-
+    var(V),
+    !.
 '$clean_cuts'(!,true):- !.
 '$clean_cuts'(G,(current_choice_point(DCP),NG)) :-
 	'$conj_has_cuts'(G,DCP,NG,OK), OK == ok, !.
@@ -51,6 +61,7 @@ meta_predicate(SourceModule,Declaration)
 
 '$clean_cuts'(!,_,true):- !.
 '$clean_cuts'(G,DCP,NG) :-
+false,
 	'$conj_has_cuts'(G,DCP,NG,OK), OK == ok, !.
 '$clean_cuts'(G,_,G).
 
@@ -83,11 +94,19 @@ meta_predicate(SourceModule,Declaration)
     '$do_module_u_vars'(M:H,UVars).
 
 '$do_module_u_vars'(M:H,UVars) :-
+    nonvar(H),
+    nonvar(M),
 	functor(H,F,N),
 	functor(D,F,N),
-	'$is_metapredicate'(D,M),
-	recorded('$m' , meta_predicate(M0,D),_),
-	(M0==M->true;M0=prolog),
+	(
+	    '$is_metapredicate'(D,M)
+	->
+	(
+	    recorded('$m' , meta_predicate(M,D),_)
+	;
+	    recorded('$m' , meta_predicate(prolog,D),_)
+	)
+	),
 	!,
 	'$do_module_u_vars'(N,D,H,UVars).
 '$do_module_u_vars'(_,[]).
@@ -109,44 +128,68 @@ meta_predicate(SourceModule,Declaration)
 '$uvar'('^'( _, G), LF, L)  :-
     '$uvar'(G, LF, L).
 
-'$expand_args'([],  _, [], _, []).
-'$expand_args'([A|GArgs], SM,   [':'|GDefs], HVars, [NMA|NGArgs]) :-
+'$expand_args'([],  _, _, [], _, []).
+'$expand_args'([A|GArgs], SM, BM,   [M|GDefs], HVars, [NA|NGArgs]) :-
+    number(M),
+    M > 0,
+    length(A1s,M),
+    '$append'(A1s,R,GArgs),
+    '$append'(A1s,NR,NGArgs),
+    length(Defs,M),
+    '$append'(Defs,RGDefs,GDefs),
     !,
-    (
-   '$identical_member'(A, HVars)
-    ->
-    A= NMA
-    ;
-    '$yap_strip_module'(SM:A,NM,NA),
-	NMA = NM:NA
-    ),
-    '$expand_args'(GArgs, SM, GDefs, HVars, NGArgs).
-'$expand_args'([A|GArgs], SM,   [N|GDefs], HVars, [NA|NGArgs]) :-
-    number(N),
+    ('$vmember'(A,HVars) -> NA = A ; NA=BM:A ),
+    '$expand_args'(R, SM, BM, RGDefs, HVars, NR).
+'$expand_args'([A|GArgs], SM, BM,   [M|GDefs], HVars, [NA|NGArgs]) :-
+    (number(M);M== ':'),
     !,
+    '$expand_arg'(A, SM, BM, M, HVars, NA),
+    '$expand_args'(GArgs, SM, BM, GDefs, HVars, NGArgs).
+'$expand_args'([A|GArgs], SM, BM,   [_N|GDefs], HVars, [A|NGArgs]) :-
+    '$expand_args'(GArgs, SM, BM, GDefs, HVars, NGArgs).
+
+
+
+'$expand_arg'(A, _SM, BM, _M, HVars, NA) :-
+    var(A),
+    !,
+    ('$vmember'(A,HVars) -> NA = A ; NA=BM:A ).
+'$expand_arg'(A, _SM, BM,_M, _HVars, BM:A) :-
+	\+ callable(A),
+	!.
+'$expand_arg'(M:A, _SM, _, Md, HVars, MA) :-
+    nonvar(M),
+    !,
+    '$expand_arg'(A, M, M, Md, HVars, MA).
+'$expand_arg'(M:A, _SM, _, _Md, _HVars, M:A) :-
+    !.
+'$expand_arg'(A^G, SM, BM, M, HVars, A^NG) :-
+    number(M),
+    !,
+    '$expand_arg'(G, SM, BM, M, HVars, NG).
+'$expand_arg'(S, SM, BM, 0, HVars, OF) :-
+    callable(S),
+    !,
+    '$expand_goals'(S, NS, _,SM, SM, BM, HVars-[]),
+    '$import_expansion'(BM:NS,BM1:NS1),
+    strip_module(BM1:NS1, MF, O),
     (
-   '$identical_member'(A, HVars)
-    ->
-    A= NA
+	'$pred_exists'(O,prolog), fail
+    -> O=OF
     ;
-    var(A)
+    OF = MF:O
+    ).
+
+'$expand_arg'(A, _,BM,_, _HVars, O) :-
+    (
+	nonvar(A),
+	'$pred_exists'(A,prolog),
+	fail
     ->
-    NA = call(SM:A)
+    O = A
     ;
-     A=call(GG)
-    ->
-    '$expand_args'([GG], SM,   [0], HVars, [NA])
-;
-    A=V^IA
-    ->
-     NA = V^JA,
-     '$expand_args'([IA], SM,   [N], HVars, [JA])
-    ;
-    '$expand_goals'(A, NA, _, SM, SM, SM, HVars-t)
-    ),
-    '$expand_args'(GArgs, SM, GDefs, HVars, NGArgs).
-'$expand_args'([A|GArgs], SM,   [_N|GDefs], HVars, [A|NGArgs]) :-
-    '$expand_args'(GArgs, SM, GDefs, HVars, NGArgs).
+    O = BM:A
+    ).
 
 % expand module names in a body
 % args are:
@@ -180,14 +223,44 @@ meta_predicate(SourceModule,Declaration)
 % modules:
 % A4: module for body of clause (this is the one used in looking up predicates)
 % A5: context module (this is the current context
-				% A6: head module (this is the one used in compiling and accessing).
-%
-'$expand_goals'(V,call(BM:V),call(BM:V),_HM,_SM,BM,_HVarsH) :-
-    \+callable(BM:V),!.
-'$expand_goals'(BM:G,call(BM:G),call(BM:G),_HM,_SM,_BM0,_HVarsH) :-
-    (var(G);var(BM))
-    ,
-	     !.
+				% A6: head module (this is the one used in compiling and 
+'$expand_goals'(V0,G,G,_HM,SM,_M0,HVars-_H) :-
+    var(V0),
+    !,
+    ('$vmember'(V0,HVars) -> G = call(V0) ; G = call(SM:V0) ).
+'$expand_goals'(V0,O,O,_HM,_SM,BM0,_HVars-_H) :-
+    '$yap_strip_module'(BM0:V0,  BM, V),
+    (var(BM)->
+	 (callable(V)->
+	  ('$pred_exists'(V,prolog)->
+'$meta_expansion'(V,BM,BM,[],O),writeln(O)
+
+;
+    O=call(BM:V))
+	 ;
+	 var(V)
+	 ->
+	 O=call(BM:V)
+	 ;
+	 O = BM:V
+	 )
+    ;
+    atom(BM)
+    ->
+	 (callable(V)->
+	   fail
+	 ;
+	 var(V)
+	 ->
+	 O=call(BM:V)
+
+;
+	 O = BM:V
+	 )
+;    
+	 O = BM:V
+    ),
+    !.
 '$expand_goals'((A*->B;C),(A1*->B1;C1),(AO*->BO;CO),
         HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AOO,HM,SM,BM,HVars),
@@ -206,7 +279,9 @@ meta_predicate(SourceModule,Declaration)
 '$expand_goals'((A,B),(A1,B1),(AO,BO),HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AO,HM,SM,BM,HVars),
 	'$expand_goals'(B,B1,BO,HM,SM,BM,HVars).
-'$expand_goals'((A;B),(A1;B1),(AO;BO),HM,SM,BM,HVars) :- var(A), !,
+
+
+'$expand_goals'((A;B),(A1;B1),(AO;BO),HM,SM,BM,HVars) :-  !,
 	'$expand_goals'(A,A1,AO,HM,SM,BM,HVars),
 	'$expand_goals'(B,B1,BO,HM,SM,BM,HVars).
 '$expand_goals'((A|B),(A1|B1),(AO|BO),HM,SM,BM,HVars) :- !,
@@ -221,10 +296,6 @@ meta_predicate(SourceModule,Declaration)
     G = (A = B),
     !.
 '$expand_goals'(\+A,\+A1,(AO-> fail;true),HM,SM,BM,HVars) :- !,
-	'$expand_goals'(A,A1,AOO,HM,SM,BM,HVars),
-	'$clean_cuts'(AOO, AO).
-'$expand_goals'(once(A),once(A1),
-	(AO->true),HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AO0,HM,SM,BM,HVars),
         '$clean_cuts'(AO0,AO).
 '$expand_goals'((:-A),(:-A1),
@@ -232,6 +303,10 @@ meta_predicate(SourceModule,Declaration)
 	'$expand_goals'(A,A1,AO,HM,SM,BM,HVars).
 '$expand_goals'(ignore(A),ignore(A1),
 	(AO-> true ; true),HM,SM,BM,HVars) :- !,
+	'$expand_goals'(A,A1,AO0,HM,SM,BM,HVars),
+    '$clean_cuts'(AO0, AO).
+'$expand_goals'(once(A),once(A1),
+	(AO-> true),HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AO0,HM,SM,BM,HVars),
     '$clean_cuts'(AO0, AO).
 '$expand_goals'(forall(A,B),forall(A1,B1),
@@ -243,7 +318,7 @@ meta_predicate(SourceModule,Declaration)
         '$clean_cuts'(BO0, BO).
 '$expand_goals'(not(A),not(A1),(current_choice_point(CP),AO,cut_by(CP) -> fail; true),HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AO,HM,SM,BM,HVars).
-'$expand_goals'((A*->B),(A1*->B1),(AO,BO),HM,SM,BM,HVars) :- !,
+'$expand_goals'((A*->B),(A1*->B1),(AO*->BO),HM,SM,BM,HVars) :- !,
 	'$expand_goals'(A,A1,AO0,HM,SM,BM,HVars),
 	'$expand_goals'(B,B1,BO,HM,SM,BM,HVars),
     '$clean_cuts'(AO0, AO).
@@ -260,26 +335,29 @@ meta_predicate(SourceModule,Declaration)
      !.
 '$import_expansion'(MG, MG).
 
-'$meta_expansion'(G, _GM, SM, _HVars, OG) :-
-    var(G),
-    !,
-    OG = call(SM:G).
+'$meta_expansion'(G, GM, _SM, _HVars,(G)) :-
+    '$yap_strip_module'(GM:G, _M, G0),
+    \+callable(G0),
+    !.
+
 '$meta_expansion'(goal_expansion(A,B), _GM, _SM, _HVars, goal_expansion(A,B)) :-
     !.
 '$meta_expansion'(G, GM, SM, HVars, OG) :-
-	 functor(G, F, Arity ),
+    ( var(GM) -> '$is_metapredicate'(G,prolog)
+      ;
+	 '$is_metapredicate'(G,GM)
+),
+    functor(G, F, Arity ),
 	 functor(PredDef, F, Arity ),
-	 '$is_metapredicate'(PredDef,GM),
 	 recorded('$m' , meta_predicate(M0,PredDef),_),
-	 (M0==GM->true;M0=prolog),
-	 !,
+	 (M0==GM->true;M0==prolog),
+    !,
 	 G =.. [F|LArgs],
 	 PredDef =.. [F|LMs],
-	 '$expand_args'(LArgs, SM, LMs, HVars, OArgs),
+	 '$expand_args'(LArgs, GM, SM, LMs, HVars, OArgs),
 	 OG =.. [F|OArgs].
-
-
-'$meta_expansion'(G, _GM, _SM, _HVars, G).
+'$meta_expansion'(G, GM, _SM, _HVars, M:NG) :-
+    '$yap_strip_module'(GM:G,M,NG).
 
  /**
  * @brief Perform meta-variable and user expansion on a goal _G_
@@ -302,6 +380,16 @@ o:p(B) :- n:g, X is 2+3, call(B).
  *
  *
  */
+'$expand_goal'(G0, GF, GF, _, _SM, BM, HVars-_H) :-
+    var(G0),
+    !,
+    (
+	'$vmember'(G0,HVars)
+    ->
+    GF = call(G0)
+    ;
+    GF = call(BM:G0)
+    ).
 '$expand_goal'(G0, G1F, GOF, HM, SM0, BM0, HVars-H) :-
      '$user_expansion'(G0 , NG0),
        % we have a context
@@ -329,13 +417,17 @@ o:p(B) :- n:g, X is 2+3, call(B).
 '$user_expansion'(G0 , G0).
 
 '$match_mod'(G0, HMod, SMod, M0, O) :-
-     strip_module(M0:G0, M,G),
-    (
+    '$yap_strip_module'(M0:G0, M,G),
+    (var(M)->
+	 O=(M:G)
+    ;var(G)->
+	 O=(M:G)
+    ;
 	'$is_metapredicate'(G,M)
     ->
     O = M:G
     ;
-      '$is_system_predicate'(G,prolog)
+      predicate_property(G,built_in)
      ->
       O = G
     ;
@@ -350,15 +442,6 @@ o:p(B) :- n:g, X is 2+3, call(B).
 '$build_up'(HM, NH, _SM, true, HM:NH, true, HM:NH) :- !.
 '$build_up'(HM, NH, SM, B1, (NH :- B1), BO, ( NH :- BO)) :- HM == SM, !.
 '$build_up'(HM, NH, _SM, B1, (NH :- B1), BO, ( HM:NH :- BO)) :- !.
-
-'$expand_goals'(BM:G,H,HM,_SM,BM,B1,BO) :-
-	    '$yap_strip_module'( BM:G, CM, G1),
-	     !,
-	     (var(CM) ->
-	     B1=HM:call(CM:G1), BO = B1
-	     ;
-	     '$expand_goals'(G1,H,HM,CM,CM,B1,BO)
-	     ).
 
 '$expand_clause_body'(V, _NH1, _HM1, _SM, M, call(M:V), call(M:V) ) :-
     var(V), !.
@@ -406,7 +489,7 @@ o:p(B) :- n:g, X is 2+3, call(B).
     '$yap_strip_module'(M0:G, M, IG),
     '$expand_goals'(IG, GF, _GF0, M, M, M, HVars-IG).
 '$expand_meta_call'(G, HVars, M:GF ) :-
-    source_module(SM0),
+    current_source_module(SM0,SM0),
     '$yap_strip_module'(SM0:G, M, IG),
     '$expand_goals'(IG, GF, _GF0, SM, SM, M, HVars-IG).
 
@@ -420,7 +503,7 @@ o:p(B) :- n:g, X is 2+3, call(B).
     !,
     '$build_up'(HM, NH, SM0, B1, Cl1, BO, ClO).
 '$expand_a_clause'(Cl, _SM, Cl, Cl).
-
+ 
 
 
 
@@ -441,3 +524,5 @@ o:p(B) :- n:g, X is 2+3, call(B).
                              % has to be last!!!
 expand_goal(Input, Output) :-
     '$expand_meta_call'(Input, [], Output ).
+
+%% @}

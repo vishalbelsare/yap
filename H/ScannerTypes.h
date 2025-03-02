@@ -10,6 +10,7 @@ typedef enum TokenKinds {
   Ponctuation_tok,
   Error_tok,
   QuasiQuotes_tok,
+  Comment_tok,
   eot_tok
 } tkinds;
 
@@ -17,6 +18,7 @@ typedef struct TOKEN {
   enum TokenKinds Tok;
   YAP_Term TokInfo;
   intptr_t TokLinePos, TokLine, TokOffset;
+  ssize_t TokSize;
   struct TOKEN *TokNext;
 } TokEntry;
 
@@ -31,9 +33,23 @@ typedef struct VARSTRUCT {
   YAP_UInt refs;
   struct VARSTRUCT *VarLeft, *VarRight;
   YAP_Atom VarRep;
+  int lineno, linepos;
   //  struct  *
   struct VARSTRUCT *VarNext;
 } VarEntry;
+
+
+typedef struct scanner_extra_params {
+  YAP_Term tposINPUT, tposOUTPUT;
+  YAP_Term backquotes, singlequotes, doublequotes;
+  bool ce, vprefix, vn_asfl;
+    YAP_Term tcomms;       /// Access to comments
+    YAP_Term ecomms;;         /// Export comments by unifying tcomms and ecomms
+  bool store_comments; //
+  bool get_eot_blank;
+  YAP_Term stored_scan;
+} scanner_params;
+
 
 /* routines in scanner.c */
 extern TokEntry *Yap_tokenizer(void *streamp, void *sp);

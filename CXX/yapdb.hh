@@ -12,9 +12,9 @@
 
 /**
  *
- *   @defgroup yap-cplus-db-interface Data-Base Component of YAP interface.
+ *   @defgroup FLI_YAP-cplus-db-interface Data-Base Component of YAP interface.
  *
- *   @ingroup yap-cplus-interface
+ *   @ingroup FLI_YAP-cplus-interface
  * @{
  *
  *
@@ -38,75 +38,51 @@ class YAPError;
 class YAPModule;
 
 /**
- * @brief YAPModule
- * A YAPModule describes a bare module, which in YAP is just a name.
+ * @class YAPModule
  *
- * Info about the module is in YAPModuleProp
+ * A YAPModule describes a module, which in YAP
+ * can just be a name, but may also be a module property.
+ *
  *
  */
-class X_API YAPModule : protected YAPAtomTerm {
+class X_API YAPModule :  public YAPAtomTerm {
   friend class YAPPredicate;
-  friend class YAPModuleProp;
-  Term t() { return gt(); }
-  Term curModule() { CACHE_REGS return Yap_CurrentModule(); }
-
+  //  ModEntry m;
 public:
+  ///< create or fetch the YAPModule whose name is contained in a `C`term;
   YAPModule(YAP_Term t) : YAPAtomTerm(t){};
-  YAPModule() : YAPAtomTerm(curModule()){};
-  YAPModule(YAPAtom t) : YAPAtomTerm(t){};
-  YAPModule(std::string t) : YAPAtomTerm(t.c_str()){};
-  Term term() { return gt(); };
+  ///< create or fetch the YAPModule whose name is contained in a `C`term;
+  YAPModule() : YAPAtomTerm(YAP_CurrentModule()){};
+  YAPModule(std::string t) : YAPAtomTerm(t) {};
 };
 
 /**
- * @brief YAPModuleProp
- * A YAPModuleProp controls access to a module property.
- *
- */
-class X_API YAPModuleProp : public YAPProp {
-  friend class YAPPredicate;
-  ModEntry *m;
-
-  YAPModuleProp(ModEntry *mod) { m = mod; };
-  YAPModuleProp(Term tmod) { m = Yap_GetModuleEntry(tmod); };
-
-public:
-  YAPModuleProp(YAPModule tmod) { m = Yap_GetModuleEntry(tmod.gt()); };
-  YAPModuleProp() {
-      CACHE_REGS
-    m = Yap_GetModuleEntry(Yap_CurrentModule()); };
-  virtual YAPModule module() { return YAPModule(m->AtomOfME); };
-};
-
-/**
- * @brief Predicates
+ * @class Predicates
  *
  * This class interfaces with PredEntry in Yatom.
  */
-class X_API YAPPredicate : public YAPModuleProp {
+class X_API YAPPredicate {
   friend class YAPQuery;
   friend class YAPEngine;
+  friend class YAPModule;
 
 protected:
   PredEntry *ap;
 
-  /// auxiliary routine to find a predicate in the current module.
-
-  /// auxiliary routine to find a predicate in the current module.
-  PredEntry *getPred(Term &t, Term &tm, CELL *&outp);
+  PredEntry *getPred(Term &t, Term &tm, CELL *&outp);  ///< auxiliary routine to find a predicate in the current module.
 
   PredEntry *asPred() { return ap; };
 
-  /// Empty constructor for predicates
+  ///< Empty constructor for predicates
   ///
   /// Just do nothing.
-  inline YAPPredicate() {}
+  inline YAPPredicate() {ap = NULL;};
   YAPPredicate(Term &to, Term &tmod, CELL *&ts, const char *pname);
   
-  /// Term constructor for predicates
+  ///< Term constructor for predicates
   ///
   /// It is just a call to getPred
-  inline YAPPredicate(Term t, CELL *&v) {
+  inline YAPPredicate(Term t, CELL *&v)  {
     CACHE_REGS
       
     if (t) {
@@ -125,7 +101,7 @@ protected:
     }
   }
 
-  /// Term constructor for predicates
+  ///< Term constructor for predicates
   ///
   /// It is just a call to getPred
   inline YAPPredicate(YAPTerm t, CELL *&v) {
@@ -143,19 +119,15 @@ protected:
     ap = getPred(tp, tm, v);
   }
 
-  /// Cast constructor for predicates,
-  /// if we have the implementation data.
-  ///
-  inline YAPPredicate(PredEntry *pe) { ap = pe; }
+   inline YAPPredicate(PredEntry *pe) { ap = pe; }   ///< Cast constructor for predicates, from C to C++
 
-  /// Functor constructor for predicates, is given a specific module.
-  /// This version avoids manufacturing objects
-  inline YAPPredicate(Functor f, Term mod) {
+  inline YAPPredicate(Functor f, Term mod) {  ///< C Functor plus C Module constructor for predicates.
+
     ap = RepPredProp(PredPropByFunc(f, mod));
   }
 
 public:
-  /// String constructor for predicates
+  ///< String constructor for predicates
   ///
   /// It also communicates the array of arguments t[]
   /// and the array of variables
@@ -180,31 +152,27 @@ public:
     names = new YAPPairTerm(tnames);
   }
 
-  /// Functor constructor for predicates
-  ///
-  /// Asssumes that we use the current module.
-  YAPPredicate(YAPFunctor f) {
+  
+  YAPPredicate(YAPFunctor f) {///< Functor constructor for predicates, assumes that we use the current module.
     CACHE_REGS
     ap = RepPredProp(PredPropByFunc(f.f, Yap_CurrentModule()));
   }
 
-  /// Functor constructor for predicates, is given a specific module.
-  ///
-  inline YAPPredicate(YAPFunctor f, YAPTerm mod) {
+  
+
+  inline YAPPredicate(YAPFunctor f, YAPTerm mod) {///< Functor constructor for predicates, is given a specific module.
     ap = RepPredProp(PredPropByFunc(f.f, mod.term()));
   }
 
-  /// Name/arity constructor for predicates.
-  ///
-  inline YAPPredicate(YAPAtom at, YAPTerm mod) {
+  inline YAPPredicate(YAPAtom at, YAPTerm mod) {  ///< Name/arity constructor for predicates.
+
     ap = RepPredProp(PredPropByAtom(at.a, mod.term()));
   }
 
-  /// Name/0 constructor for predicates.
-  ///
-  YAPPredicate(YAPAtom at);
+    YAPPredicate(YAPAtom at);  ///< Name/0 constructor for predicates.
 
-  /// Mod:Name/Arity constructor for predicates.
+
+  ///< Mod:Name/Arity constructor for predicates.
   ///
   inline YAPPredicate(YAPAtom at, uintptr_t arity, YAPModule mod) {
     if (arity) {
@@ -215,13 +183,11 @@ public:
     }
   }
 
-  /// Atom/Arity constructor for predicates.
-  ///
-  YAPPredicate(YAPAtom at, uintptr_t arity);
+ 
+    YAPPredicate(YAPAtom at, uintptr_t arity);   ///< Atom/Arity constructor for predicates.
 
- /// std::string/Arity constructor for predicates.
-  ///
-  inline YAPPredicate(const std::string at, uintptr_t arity, std::string mod="") {
+    inline YAPPredicate(const std::string at, uintptr_t arity, std::string mod="") {  ///< std::string/Arity constructor for predicates.
+
           CACHE_REGS
 
   Term m;
@@ -234,69 +200,62 @@ public:
 				m));
 }
 
-  /// char */arity constructor for predicates.
-  ///
-  inline YAPPredicate(const char *at, uintptr_t arity) {
+    inline YAPPredicate(const char *at, uintptr_t arity) {   ///< char */arity constructor for predicates.
+
           CACHE_REGS
 
     ap = RepPredProp(PredPropByFunc(Yap_MkFunctor(Yap_LookupAtom(at), arity),
                                     Yap_CurrentModule()));
   };
 
-  /// char */module constructor for predicates.
-  ///
-  inline YAPPredicate(const char *at, uintptr_t arity, YAPTerm mod) {
+    inline YAPPredicate(const char *at, uintptr_t arity, YAPTerm mod) {   ///< char */module constructor for predicates.
+
     ap = RepPredProp(
         PredPropByFunc(Yap_MkFunctor(Yap_LookupAtom(at), arity), mod.term()));
   };
 
-  /// char */module constructor for predicates.
-  ///
-  inline YAPPredicate(const char *at, YAPTerm mod) {
+    inline YAPPredicate(const char *at, YAPTerm mod) {   ///< char */module constructor for predicates.
+
     ap = RepPredProp(PredPropByAtom(Yap_LookupAtom(at), mod.term()));
   }
 
-  /// module of a predicate
-  ///
-  /// notice that modules are currently treated as atoms, this should change.
-  YAPModule module() {
-    if (ap->ModuleOfPred == PROLOG_MODULE)
-      return YAPModule(AtomProlog);
-    else
-      return YAPModule(AtomOfTerm(ap->ModuleOfPred));
-  }
+    /// notice that modules are currently treated as atoms, this should change.
+  YAPModule module() {   ///< module of a predicate
 
-  /// name of predicate
-  ///
-  /// notice that we return the atom, not a string.
-  YAPAtom name() {
+    if (ap->ModuleOfPred == PROLOG_MODULE)
+      return YAPModule(std::string("prolog"));
+    else
+      return YAPModule(AtomOfTerm(ap->ModuleOfPred)->StrOfAE);
+	};
+
+    /// notice that we return the atom, not a string.
+  YAPAtom name() {   ///< name of predicate
+
     if (ap->ArityOfPE)
       return YAPAtom((Atom)ap->FunctorOfPred);
     else
       return YAPAtom(NameOfFunctor(ap->FunctorOfPred));
-  }
+  };
 
-  /// functor of predicate
-  ///
-  /// onlu defined if arity >= 1
-  YAPFunctor functor() {
+    /// onlu defined if arity >= 1
+  YAPFunctor functor() {   ///< functor of predicate
+
     if (ap->ArityOfPE)
       return YAPFunctor(ap->FunctorOfPred);
     Yap_ThrowError(DOMAIN_ERROR_OUT_OF_RANGE, MkIntTerm(0),
                    "YAPFunctor::functor");
     return (YAPFunctor)0;
-  }
+  };
 
-  /// arity of predicate
-  ///
-  /// we return a positive number.
-  uintptr_t getArity() { return ap->ArityOfPE; }
+
+  uintptr_t getArity() { return ap->ArityOfPE; };   ///< arity of predicate, we return a positive number.
+
   arity_t arity() { return ap->ArityOfPE; }
   PredEntry *predEntry() { return ap; }
 };
 
 /**
- * @brief PrologPredicate
+ * @class YAPPrologPredicate
  *
  * This class interfaces with Predicates Implemented in Prolog.
  */
@@ -305,21 +264,21 @@ public:
   YAPPrologPredicate(YAPTerm t) : YAPPredicate(t){};
   YAPPrologPredicate(const char *s, arity_t arity) : YAPPredicate(s, arity){};
   YAPPrologPredicate(YAPAtom s, arity_t arity) : YAPPredicate(s, arity){};
-  /// add a new clause
-  bool assertClause(YAPTerm clause, bool last = true,
+  bool assertClause(YAPTerm clause, bool last = true,   ///< add a new clause
+
                     YAPTerm source = YAPTerm());
-  /// add a new tuple
-  bool assertFact(YAPTerm *tuple, bool last = true);
-  /// retract at least the first clause matching the predicate.
-  void *retractClause(YAPTerm skeleton, bool all = false);
-  /// return the Nth clause (if source is available)
-  // YAPTerm clause(size_t index, YAPPredicate p) { return YAPTerm(); };
-  /// return the Nth clause (if source is available)
-  YAPTerm *nextClause() { return nullptr; };
+  bool assertFact(YAPTerm *tuple, bool last = true);   ///< add a new tuple
+
+  void *retractClause(YAPTerm skeleton, bool all = false);   ///< retract at least the first clause matching the predicate.
+
+  // YAPTerm clause(size_t index, YAPPredicate p) { return YAPTerm(); };   ///< return the Nth clause (if source is available)
+
+  YAPTerm *nextClause() { return nullptr; };   ///< return the Nth clause (if source is available)
+
 };
 
 /**
- * @brief PrologPredicate
+ * @class YAPFLIP
  *
  * This class interfaces with Predicates Implemented in Prolog.
  */
@@ -330,44 +289,31 @@ public:
           YAP_UserCPred cut = 0, YAP_Arity extra = 0, bool test = false)
     : YAPPredicate(name.c_str(), arity, MkAtomTerm(Yap_LookupAtom(module.c_str()))) {
     //CACHE_REGS
-
-    if (retry) {
-      YAP_UserBackCutCPredicate(name.c_str(), call, retry, cut, arity, extra);
-    } else {
-      if (test) {
-        YAP_UserCPredicate(name.c_str(), call, arity);
-      } else {
-        YAP_UserCPredicate(name.c_str(), call, arity);
-      }
-    }
+    YAP_UserCPredicate(name.c_str(), call, arity);
   };
-  YAPFLIP(const char *name, uintptr_t arity, YAPModule module = YAPModule(),
-          bool backtrackable = false)
+  YAPFLIP(const char *name, uintptr_t arity, YAPModule module = YAPModule())
       : YAPPredicate(YAPAtom(name), arity, module) {
-    if (backtrackable) {
-      Yap_InitCPredBackCut(name, arity, 0, 0, 0, 0, UserCPredFlag);
-    } else {
       YAP_UserCPredicate(name, 0, arity);
-    }
   };
   bool addCall(CPredicate call) { return Yap_AddCallToFli(ap, call); }
   bool addRetry(CPredicate call) { return Yap_AddRetryToFli(ap, call); }
   bool addCut(CPredicate call) { return Yap_AddCutToFli(ap, call); }
 
-  //> access to input argument i as a term
-  Term x(int i) {
+  Term x(int i) {   ///< access to input argument i as a term
+
           CACHE_REGS
 
-    return XREGS[i]; }
-  //>  access to input argument as a YAPTerm
-  YAPTerm X(int i) {
+    return XREGS[i];
+  }
+  YAPTerm X(int i) {   ///<  access to input argument as a YAPTerm
+
           CACHE_REGS
 
 
     return YAPTerm(XREGS[i]); }
 
-  //> unify term t with argumentr i
-  bool output( Term t, int i) {
+  bool output( Term t, int i) {   ///< unify term t with argumentr i
+
       CACHE_REGS
     return Yap_unify(XREGS[i], t);
   };
@@ -376,19 +322,19 @@ public:
 
     return t.unify(XREGS[i]); };
 
-  //> ensure at least cells cells are available
-  bool ensureStorage( size_t cells) {
+  bool ensureStorage( size_t cells) {   ///< ensure at least cells cells are available
+
       CACHE_REGS
 
-    return Yap_dogcl(cells*sizeof(CELL) PASS_REGS); }
-  //>  ensure memory but take care to first save the terms in
-  //>  ts. YAPTerms do no require this.
-  bool ensureStorage( size_t cells, std::vector<Term> ts)    
-  {
+    return Yap_dogcl(cells*sizeof(CELL) PASS_REGS);
+  };
+  ///<  ts. YAPTerms do no require this.
+  bool ensureStorage( size_t cells, std::vector<Term> ts) {      ///<  ensure memory but take care to first save the terms in ts
           CACHE_REGS
 
     return Yap_dogcl(cells*sizeof(CELL) PASS_REGS); };
 };
+
 
 #endif
 

@@ -17,35 +17,27 @@
 /**
 
   @file newmod.yap
-  @short support for creating a new module.
+  @brief support for creating a new module.
+*/
 
-  @ingroup ModuleBuiltins
-  @pred module(+M) is det
-   set the type-in module
+/*
+  @defgroup NewModuleBuiltins Creating New Modules
+  @ingroup YAPModules
 
+@brief Predicates that create a new module. or export predicates from other modules. 
 
-Defines  _M_ to be the current working or type-in module. All files
-which are not bound to a module are assumed to belong to the working
-module (also referred to as type-in module). To compile a non-module
-file into a module which is not the working one, prefix the file name
-with the module name, in the form ` _Module_: _File_`, when
-loading the file.
+  @{
+*/
 
-**/
 module(N) :-
-	var(N),
-	throw_error(instantiation_error,module(N)).
-module(N) :-
-	atom(N), !,
+	must_be_atom(N), !,
 	% set it as current module.
 	'$current_module'(_,N).
-module(N) :-
-	throw_error(type_error(atom,N),module(N)).
 
 /**
- \pred	module(+ Module:atom, +ExportList:list) is directive
+ @pred	module(+ Module:atom, +ExportList:list) is directive
 
-  @brief define a new module
+ @brief define a new module
 
 This directive defines the file where it appears as a _module file_;
 it must be the first declaration in the file.  _Module_ must be an
@@ -63,55 +55,26 @@ non-public predicates of a module file are not supposed to be visible
 to other modules; they can, however, be accessed by prefixing the module
 name with the `:/2` operator.
 
+*/
 
-'$module_dec'(_,system(N, Ss), Ps) :- !,
-		new_system_module(N),
-    '$mk_system_predicates'( Ss , N ),
-    '$module_dec'(prolog,N, Ps).
-'$module_dec'(_,system(N), Ps) :- !,
-		new_system_module(N),
-%    '$mk_system_predicates'( Ps , N ),
-    '$module_dec'(prolog,N, Ps).
-**/
-'$declare_module'(_, HostM, DonorM, Ps, _Ops) :-
-    source_location(F,Line),
-	('__NB_getval__'( '$user_source_file', F0 , fail)
-	->
-	    true
-	;
-	    F0 = F
-	),
-    
-    '$add_module_on_file'(DonorM, F, HostM, Ps, Line),
+'$declare_module'(HostM, DonorM, Ps,Loc) :-
+    stream_property(loop_stream,file_name(F)),  
+    '$add_module_on_file'(DonorM, F, HostM, Ps, Loc),
     current_source_module(HostM,DonorM).
 
 
-'$mk_system_predicates'( Ps, _N ) :-
-    '$memberchk'(Name/A , Ps),
+
+'$declare_system_module'(HostM,N,Ps,Ss,Loc) :-
+    '$declare_module'(HostM,N,Ps,Loc),
+    '$mk_system_predicates'(Ss),
+    set_module_property(N,type(system)).
+
+'$mk_system_predicates'( Ps ) :-
+    member(Name/A , Ps),
     '$new_system_predicate'(Name, A, prolog),
     fail.
-'$mk_system_predicates'( _Ps, _N ).
+'$mk_system_predicates'( _Ps ).
 
-/*
-declare_module(Mod) -->
-	arguments(file(+file:F),
-		  line(+integer:L),
-		  parent(+module:P),
-		  type(+module_type:T),
-		  exports(+list(exports):E),
-
-		  Props, P0) -> true ; Props = P0),
-	( deleteline(L), P0, P1) -> true ; P0 == P1),
-	( delete(parent(P), P1, P2) -> true ; P1 == P2),
-	( delete(line(L), P2, P3) -> true ; P3 == P4),
-	( delete(file(F), Props, P0) -> true ; Props = P0),
-	( delete(file(F), Props, P0) -> true ; Props = P0),
-	( delete(file(F), Props, P0) -> true ; Props = P0),
-	de
-*/
-'$module'(_,N,P) :-
-	current_source_module(M,M),
-	'$declare_module'(_,M,N,P,[]).
 
 /** set_module_property( +Mod, +Prop)
 
@@ -126,16 +89,16 @@ set_module_property(Mod, base(Base)) :-
 set_module_property(Mod, exports(Exports)) :-
 	must_be_of_type( module, Mod),
 	current_source_module(OMod,OMod),
-	'$add_module_on_file'(Mod, user_input, OMod, Exports, 1).
-set_module_property(Mod, exports(Exports, File, Line)) :-
+	'$add_module_on_file'(Mod, user_input, OMod, Exports, '$stream_position'(0,1,0,0)).
+set_module_property(Mod, exports(Exports, File, Location)) :-
 	current_source_module(OMod,OMod),
 	must_be_of_type( module, Mod),
-	'$add_module_on_file'(Mod, File, OMod, Exports, Line).
+	'$add_module_on_file'(Mod, File, OMod, Exports, Location).
 set_module_property(Mod, class(Class)) :-
 	must_be_of_type( module, Mod),
 	must_be_of_type( atom, Class).
 
-'$add_module_on_file'( DonorM, DonorF, _HostM, Exports, _LineF) :-
+'$add_module_on_file'( DonorM, DonorF, _HostM, Exports, _LocationF) :-
     '$module'(OtherF, DonorM, OExports, _),
     % the module has been found, are we reconsulting?
     (
@@ -150,14 +113,14 @@ set_module_property(Mod, class(Class)) :-
     unload_module(DonorM),
     fail
     ).
-'$add_module_on_file'( DonorM, DonorF0, _, Exports, Line) :-
+'$add_module_on_file'( DonorM, DonorF0, _, Exports, Location) :-
     (DonorM= prolog -> DonorF = user_input ;
      DonorM= user -> DonorF = user_input ;
      DonorF0 = DonorF),
     '$m_normalize'(Exports,DonorM,Tab),
     '$sort'( Tab, AllExports ),
     % last, export to the host.
-    asserta('$module'(DonorF,DonorM, AllExports, Line)),
+    asserta('$module'(DonorF,DonorM, AllExports, Location)),
    (
        recorded('$source_file','$source_file'( DonorF, Time), R), erase(R),
        fail
@@ -172,16 +135,6 @@ set_module_property(Mod, class(Class)) :-
     '$operators'(AllExports0, DonorM).
 '$operators'([_|AllExports0], DonorM) :-
     '$operators'(AllExports0, DonorM).
-
-/**
-
-@defgroup ModPreds Module Interface Predicates
-@ingroup YAPModules
-
-
-  @{
-
-**/
 
 
 '$export_preds'([]).
@@ -232,20 +185,19 @@ account the following observations:
   the file may result in incorrect execution.
 
 */
-'$reexport'(M, M ) :-
+'$reexport'(M, _, M ) :-
     !.
-'$reexport'(user, _M ) :-
+'$reexport'(user, _, _M ) :-
     !.
-'$reexport'(HostM, DonorM ) :-
-%        writeln(r0:DonorM/HostM),
-    ( retract('$module'( HostF, HostM, AllExports, Line)) -> true ; HostF = user_input,AllExports=[] ,Line=1),
-    (
-	'$module'( _DonorF, DonorM, AllReExports, _Line) -> true ; AllReExports=[] ),
+'$reexport'(HostM, AllReExports, _DonorM ) :-
+%       writeln(r0:DonorM/HostM),
+    ( retract('$module'( HostF, HostM, AllExports, Location)) -> true ; HostF = user_input,AllExports=[] ,Location='$stream_position'(0,1,0,0)),
     '$append'( AllReExports, AllExports, Everything0 ),
     '$sort'( Everything0, Everything ),
     '$operators'(AllReExports, HostM),
+%    '$operators'(AllReExports, DonorM),
     %    writeln(r:DonorM/HostM),
-    asserta('$module'(HostF,HostM, Everything, Line)).
+    asserta('$module'(HostF,HostM, Everything, Location)).
 
 
 
@@ -259,6 +211,7 @@ This predicate actually exports _Module to the _ContextModule_.
  _Imports is what the ContextModule needed.																			
 */
 
+/*
 '$import_module'(DonorM, HostM, F, _Opts) :-
     DonorM ==  HostM,
     !,
@@ -268,9 +221,9 @@ This predicate actually exports _Module to the _ContextModule_.
     true;
 	assert('$source_file_scope'( F, M) )
     ).
+*/
 '$import_module'(DonorM, HostM, File, _Opts) :-
-    \+
-	'$module'(File, DonorM, _ModExports, _),                                                                 
+	'$module'(File, DonorM, _ModExports, _),                                
 	% enable loading C-predicates from a different file
 	recorded( '$load_foreign_done', [File, DonorM], _),
 	'$import_foreign'(File, DonorM, HostM ),
@@ -278,41 +231,16 @@ This predicate actually exports _Module to the _ContextModule_.
 '$import_module'(DonorM, HostM,File, Opts) :-
     DonorM \= HostM,
     '$module'(File, DonorM, Exports, _),
-    ignore('$member'(imports(Imports),Opts)),
+    ignore(member(imports(Imports),Opts)),
     '$filter'(Imports, Exports, Tab),
     '$add_to_imports'(Tab, DonorM, HostM),
     (     '$memberchk'(reexport(true),Opts)
     ->
-    '$reexport'(HostM, DonorM )
+    '$reexport'(HostM, Tab, DonorM )
     ;
     true
     ),
     !.
-
-'$operators'([],_).
-'$operators'([op(A,B,C)|AllExports0], DonorM) :-
-    op(A,B,DonorM:C),
-    !,
-    '$operators'(AllExports0, DonorM).
-'$operators'([_|AllExports0], DonorM) :-
-    '$operators'(AllExports0, DonorM).
-
-/**
-
-@defgroup ModPreds Module Interface Predicates
-@ingroup YAPModules
-
-
-  @{
-
-**/
-
-
-'$export_preds'([]).
-'$export_preds'([N/A|Decls]) :-
-    functor(S, N, A),
-    '$sys_export'(S, prolog),
-    '$export_preds'(Decls).
 
 /**
 
@@ -356,18 +284,6 @@ account the following observations:
   the file may result in incorrect execution.
 
 */
-'$reexport'(M, M ) :-
-    !.
-'$reexport'(HostM, DonorM ) :-
-%        writeln(r0:DonorM/HostM),
-    ( retract('$module'( HostF, HostM, AllExports, Line)) -> true ; HostF = user_input,AllExports=[] ,Line=1),
-    (
-	'$module'( _DonorF, DonorM, AllReExports, _Line) -> true ; AllReExports=[] ),
-    '$append'( AllReExports, AllExports, Everything0 ),
-    '$sort'( Everything0, Everything ),
-    '$operators'(AllReExports, HostM),
-    %    writeln(r:DonorM/HostM),
-    asserta('$module'(HostF,HostM, Everything, Line)).
 
 
 /**
@@ -399,12 +315,12 @@ This predicate actually exports _Module to the _ContextModule_.
 '$import_module'(DonorM, HostM,File, Opts) :-
     DonorM \= HostM,
     '$module'(File, DonorM, Exports, _),
-    ignore('$member'(imports(Imports),Opts)),
+    ignore(member(imports(Imports),Opts)),
     '$filter'(Imports, Exports, Tab),
     '$add_to_imports'(Tab, DonorM, HostM),
     (     '$memberchk'(reexport(true),Opts)
     ->
-    '$reexport'(HostM, DonorM )
+    '$reexport'(HostM,Tab, DonorM )
     ;
     true
     ),
@@ -424,6 +340,8 @@ This predicate actually exports _Module to the _ContextModule_.
 '$m_norm'(N/A as M, _M, N/A-M/A).
 '$m_norm'(N//A as M, _M, N/A2-M/A2) :- A2 is A+2.
 '$m_norm'(op(A,B,V), M, op(A,B,V)) :- op(A,B,M:V).
+
+
 
 '$filter'(V,E,E) :- 
     var(V), !.
@@ -459,20 +377,20 @@ This predicate actually exports _Module to the _ContextModule_.
      '$select_ms'(L,E, LI,L0).
 
 '$select_p'(P/N,E,    [P0-P/N|F],   F) :-
-    '$member'(P0-P/N,E),
+    member(P0-P/N,E),
     !.
 '$select_p'(op(A,B,C),_E,    [op(A,B,C)|F],   F) :-
-%    '$member'(P0-P/N,_E),
+%    member(P0-P/N,_E),
     !,
     [op(A,B,C)].
 '$select_p'(P//N,E,    [P0-P/N|F],   F) :-
     (var(N)
     ->
-	'$member'(P0-P/N2,E),
+	member(P0-P/N2,E),
 	N is N2-2
     ;
     N2 is N+2,
-    '$member'(P0-P/N2,E)
+    member(P0-P/N2,E)
     ),
     !,
     [P0-P/N2].

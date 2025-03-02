@@ -11,6 +11,12 @@
 *.dylib
 *.dll
 docs/yap.info*
+*/*/html
+*/*/xml
+*/*/latex
+*/latex
+*/html
+*/xml
 build
 tags
 TAGS
@@ -19,6 +25,7 @@ cscope.*
 .cquery_cached_index
 GPATH
 m32
+n0
 GRTAGS
 GTAGS
 tmtags*
@@ -33,6 +40,7 @@ YapTermConfig.h
 \#*\#
 */#*#
 *bak
+
 *rej
 *.db
 groups
@@ -109,9 +117,10 @@ packages/raptor/raptor_config.h
 packages/real/rconfig.h
 
 packages/ProbLog/problog/#completion.yap#
-
+xml0
 packages/ProbLog/problog_examples/output
 packages/ProbLog/problog_examples/queries
+
 packages/swig/java/*.java
 packages/swig/java/*.class
 packages/swig/java/*.jar
@@ -246,3 +255,8 @@ misc/Doxyfile.docs
 misc/build.ninja
 misc/dlocals.h
 misc/library/system/sys_config.h
+C/readterm.c
+CXX/CMakeCache.txt
+C/absm.c
+C/preds.yap
+H/exec/c

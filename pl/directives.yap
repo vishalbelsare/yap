@@ -1,4 +1,3 @@
-
 /*************************************************************************
 *
 *	 YAP Prolog 							 *
@@ -24,15 +23,15 @@
   * @brief  Control File Loading
   %
   % @defgroup Directives Prolog Directives
-  % @ingroup YAPConsult
+  % @ingroup YAPConsulting
   *
   * Directives are instructions to start or change the compilation process.
   * @{
 */
 
 
-:- system_module( '$_directives', [user_defined_directive/2], ['$all_directives'/1,
-        '$exec_directives'/5]).
+%:- system_module( '$_directives', [user_defined_directive/2], ['$all_directives'/1,
+ %       '$exec_directives'/5]).
 
 :- use_system_module( '$_boot', ['$command'/4,
         '$system_catch'/4]).
@@ -95,7 +94,6 @@
 '$directive'(license(_)).
 '$directive'(meta_predicate(_)).
 '$directive'(module(_,_)).
-'$directive'(module(_,_,_)).
 '$directive'(module_transparent(_)).
 '$directive'(multifile(_)).
 '$directive'(noprofile(_)).
@@ -106,6 +104,7 @@
 '$directive'(reconsult(_)).
 '$directive'(reexport(_)).
 '$directive'(reexport(_,_)).
+'$directive'(system_module(_,_,_)).
 '$directive'(predicate_options(_,_,_)).
 '$directive'(thread_initialization(_)).
 '$directive'(thread_local(_)).
@@ -119,6 +118,9 @@
     !,
     '$exec_directives'(G1, Mode, M, VL, Pos),
     '$exec_directives'(G2, Mode, M, VL, Pos).
+'$exec_directives'(M:G, Mode, _M, VL, Pos) :-
+    !,
+    '$exec_directives'(G, Mode, M, VL, Pos).
 '$exec_directives'(G, Mode, M, VL, Pos) :-
     '$exec_directive'(G, Mode, M, VL, Pos).
 
@@ -126,12 +128,16 @@
 '$exec_directive'(multifile(D), _, M, _, _) :-
 	'$system_catch'('$multifile'(D, M), M,
 	      Error,
-	      user:'$LoopError'(Error, top)).
+	      error_handler(Error, top)).
+'$exec_directive'(M:G, Mode, _M, VL, Pos) :-
+    !,
+
+    '$exec_directive'(G, Mode, M, VL, Pos).
 '$exec_directive'(discontiguous(D), _, M, _, _) :-
 	'$discontiguous'(D,M).
 /** @pred initialization(+ _G_) is iso
 
-The compiler will execute goals  _G_ after consulting the current
+Theu compiler will execute goals  _G_ after consulting the current
 file. Only the first answer is
 considered.
 
@@ -168,15 +174,19 @@ Similar to initialization/1, but allows  specifying when
     expects_dialect(D).
 '$exec_directive'(encoding(Enc), _, _, _, _) :-
         '$set_encoding'(Enc).
-'$exec_directive'(include(F), Status, _, _, _) :-
-	'$include'(F, Status).
+'$exec_directive'(include(F), _Status, _, _, _) :-
+	'$include'(F).
 % don't declare modules into Prolog Module
-'$exec_directive'(module(N,P), Status, _, _, _) :-
-    current_source_module(HostM, HostM),
-	'$declare_module'(Status,HostM,N,P,[]).
-'$exec_directive'(module(N,P,Op), Status, _, _, _) :-
-    current_source_module(HostM, HostM),
-	'$declare_module'(Status,HostM,N,P,Op).
+'$exec_directive'(module(N,P), _Status, HostM, _, Pos) :-
+    '$declare_module'(HostM,N,P,Pos).
+'$exec_directive'(system_module(N,Ps,Ss), _Status, HostM, Log, Pos) :-
+    (
+current_prolog_flag(compiler_top_level, scanner:scanner_loop)
+    ->
+      current_source_module(_,prolog)
+    ;
+      '$declare_system_module'(HostM,N,Ps,Ss,Log,Pos)
+).
 '$exec_directive'(meta_predicate(P), _, M, _, _) :-
     '$meta_predicate'(P,M).
 '$exec_directive'(module_transparent(P), _, M, _, _) :-
@@ -186,7 +196,8 @@ Similar to initialization/1, but allows  specifying when
 '$exec_directive'(require(Ps), _, M, _, _) :-
 	'$require'(Ps, M).
 '$exec_directive'(dynamic(P), _, M, _, _) :-
-	'$dynamic'(P, M).
+    strip_module(M:P,M1,P1),
+    '$dynamic'(P1, M1).
 '$exec_directive'(thread_local(P), _, M, _, _) :-
 	'$thread_local'(P, M).
 '$exec_directive'(op(P,OPSEC,OP), _, _, _, _) :-
@@ -194,27 +205,27 @@ Similar to initialization/1, but allows  specifying when
 	op(P,OPSEC,M:OP).
 '$exec_directive'(set_prolog_flag(F,V), _, _, _, _) :-
 	set_prolog_flag(F,V).
-'$exec_directive'(ensure_loaded(Fs), _, M, _, _) :-
-	load_files(M:Fs, [if(changed)]).
+'$exec_directive'(ensure_loaded(Fs), _, M, _, Loc) :-
+	load_files(M:Fs, [if(changed),'consulted_at'(Loc)]).
 '$exec_directive'(char_conversion(IN,OUT), _, _, _, _) :-
 	char_conversion(IN,OUT).
 '$exec_directive'(public(P), _, M, _, _) :-
 	'$public'(P, M).
-'$exec_directive'(compile(Fs), _, M, _, _) :-
-    load_files(M:Fs, []).
-'$exec_directive'(reconsult(Fs), _, M, _, _) :-
-    load_files(M:Fs, []).
-'$exec_directive'(consult(Fs), _, M, _, _) :-
-    load_files(M:Fs, [consult(consult)]).
-'$exec_directive'(use_module(F), _, M, _, _) :-
-	use_module(M:F).
-'$exec_directive'(reexport(F), _, M, _, _) :-
-    load_files(M:F, [if(not_loaded), silent(true), reexport(true),must_be_module(true)]).
-'$exec_directive'(reexport(F,Spec), _, M, _, _) :-
-    load_files(M:F, [if(not_loaded), silent(true), imports(Spec), reexport(true),must_be_module(true)]).
-'$exec_directive'(use_module(F, Is), _, M, _, _) :-
-	use_module(M:F, Is).
-'$exec_directive'(use_module(Mod,F,Is), _,M, _, _) :-
+'$exec_directive'(compile(Fs), _, M, _, Loc) :-
+    load_files(M:Fs, ['consulted_at'(Loc)]).
+'$exec_directive'(reconsult(Fs), _, M, _, Loc) :-
+    load_files(M:Fs, ['consulted_at'(Loc)]).
+'$exec_directive'(consult(Fs), _, M, _, Loc) :-
+    load_files(M:Fs, [consult(consult),'consulted_at'(Loc)]).
+'$exec_directive'(use_module(F), _, M, _, Loc) :-
+    load_files(M:F,[if(not_loaded),must_be_module(true),'consulted_at'(Loc)]).
+'$exec_directive'(reexport(F), _, M, _, Loc) :-
+    load_files(M:F, [if(not_loaded), silent(true), reexport(true),must_be_module(true),'consulted_at'(Loc)]).
+'$exec_directive'(reexport(F,Spec), _, M, _, Loc) :-
+    load_files(M:F, [if(not_loaded), silent(true), imports(Spec), reexport(true),must_be_module(true),'consulted_at'(Loc)]).
+'$exec_directive'(use_module(F, Is), _, M, _, _Loc) :-
+	use_module(M:F, Is ).
+'$exec_directive'(use_module(Mod,F,Is), _,M, _, _Loc) :-
     use_module(Mod,M:F,Is).
 '$exec_directive'(block(BlockSpec), _, _, _, _) :-
 	'$block'(BlockSpec).
@@ -224,14 +235,14 @@ Similar to initialization/1, but allows  specifying when
 	'$table'(PredSpec, M).
 '$exec_directive'(uncutable(PredSpec), _, M, _, _) :-
 	'$uncutable'(PredSpec, M).
-'$exec_directive'(if(Goal), Context, M, _, _) :-
-	'$if'(M:Goal, Context).
-'$exec_directive'(else, Context, _, _, _) :-
-	'$else'(Context).
-'$exec_directive'(elif(Goal), Context, M, _, _) :-
-	'$elif'(M:Goal, Context).
-'$exec_directive'(endif, Context, _, _, _) :-
-	'$endif'(Context).
+'$exec_directive'(if(Goal), _Context, M, _, _) :-
+	'$if'(M:Goal).
+'$exec_directive'(else, _Context, _, _, _) :-
+	'$else'.
+'$exec_directive'(elif(Goal), _Context, M, _, _) :-
+	'$elif'(M:Goal).
+'$exec_directive'(endif, _Context, _, _, _) :-
+	'$endif'.
 '$exec_directive'(license(_), Context, _, _, _) :-
 	Context \= top.
 '$exec_directive'(predicate_options(PI, Arg, Options), Context, Module, VL, Pos) :-

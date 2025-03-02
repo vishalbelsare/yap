@@ -4,14 +4,13 @@
   * @brief JUpyter support.
   */
 
-%:- yap_flag(gc_trace,verbose).
+%:- set_prolog_flag(gc_trace,verbose).
 
 :- module( jupyter,
            [
- 	       jupyter/3,
+ 	       jupyter/2,
+	       jupyter_query/2,
 	       jupyter_consult/2,
-	       jupyter_call/2,
-	       blank/1,
 	       op(100,fy,('$')),
 	       op(950,fy,:=),
 	       op(950,yfx,:=),
@@ -38,16 +37,19 @@
 
 :- python_import(sys).
 
-:- python_import('IPython'.core.getipython).
 :- python_import(yap4py.yapi as yapi).
 :- python_import(builtins as builtin_mod).
+:- python_import(yapkernel.yapk).
 %:- python_import(yap_ipython.utils.capture).
 
+:- ipython := yapkernel.yapk.get_ipython().
+
+streams(_).
 
 next_streams( _Caller, exit, _Bindings ) :-
     %    Caller := Bindings,
     !.
-next_streams( _Caller, answer, _Bindings ) :-
+    next_streams( _Caller, answer, _Bindings ) :-
     %    Caller := Bindings,
 
     !.
@@ -58,12 +60,12 @@ next_streams( _, _, _ ).
 
 jupyter(Cell, Query ) :-
     self := Query,
-    shell :=  super('InteractiveShell',self),
+    shell :=  self,
     current_source_module(_,user),
     demagify(Cell, NMCell, KindOfMagic),
     ( KindOfMagic == '%%' -> true
     ;
-    atom__concat('#?',_,Cell)
+    atom_concat('#?',_,Cell)
     ->
      j_call(user:NMCell, Query)
     ;
@@ -91,7 +93,6 @@ j_consult(MCell, Self) :-
 	true;
 	jupyter_consult(MCell, Self)
     ).
-
 j_call(Cell,Caller) :-
    (
 	Cell == ""
@@ -105,24 +106,11 @@ j_call(Cell,Caller) :-
    ->
        j_call(Trcell,Caller)
    ;
-	jupyter_call(Cell,Caller)
+	jupyter_query(Cell,Caller)
     ).
 
-
-/**
-  *
-  * how the YAP Jupyter kernels calls a goal in the cell.
-  */
-
-user:jupyter_query(Query, Self ) :-
-    catch(
-        yapi_query(Self, Query),
-        Error,
-        throw_error(Error,jupyter_query(Query, Self ))
-    ).
-
-jupyter_call( Line, Self ) :-
-    yapi_query(Self,user:Line).
+jupyter_query( Line, Self ) :-
+    user:top_query(Self,user:Line).
 /*
     read_term_from_atomic(Line, G, [variable_names(Vs)]),
     (query_to_answer(user:G,Vs,Port, GVs, LGs)
@@ -151,7 +139,9 @@ jupyter_call( Line, Self ) :-
   * how the YAP Jupyter kernels consults the text in cell.
   */
 
-user:jupyter_consult(Cell, Self) :-
+jupyter_consult(Cell, _Self) :-
+    Cell='', !.
+jupyter_consult(Cell, Self) :-
     jupyter_consult(Cell, Self, []).
 
 :- dynamic j/1.
@@ -164,15 +154,13 @@ jc(I) :-
     assert(j(I1)).
     
 jupyter_consult(Cell, Self, Options) :-
-    setup_call_catcher_cleanup(
-        open_mem_read_stream( Cell, Stream),
-	(
-            load_files(cell,[stream(Stream),skip_unix_header(true),source_module(user),silent(false)| Options])
-	),
-	Error,
-	(writeln(Error),
-	 Self.errors := Self.errors+ [Error]
-	)
-    ).
+   := print(Self),
+self := Self,
+    jc(I),
+        writeln(I),  
+    format(atom(Id),'cell ~d',[I]),
+    writeln(Id),
+    open(atom(Cell), read, Stream),
+    load_files(Id,[stream(Stream),skip_unix_header(true),source_module(user),silent(false)| Options]).
 
 

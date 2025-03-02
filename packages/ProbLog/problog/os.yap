@@ -212,8 +212,7 @@
 	       convert_filename_to_working_path/2,
 	       convert_filename_to_problog_path/2,
 	       concat_path_with_filename/3,
-	       concat_path_with_filename2/3,
-	       split_path_file/3,
+%	       split_path_file/3,
 	       check_existance/1,
 	       calc_md5/2]).
 
@@ -221,7 +220,7 @@
 % load library modules
 :- use_module(library(system), [exec/3, file_exists/1,wait/2,  md5/3]).
 :- use_module(library(lists), [memberchk/2]).
-:- yap_flag(arithmetic_exceptions, false).
+:- set_prolog_flag(arithmetic_exceptions, false).
 
 % load our own modules
 :- use_module(gflags, _, [flag_get/2]).

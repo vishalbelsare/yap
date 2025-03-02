@@ -11,10 +11,6 @@
  * comments:	Input/Output C implemented predicates			 *
  *									 *
  *************************************************************************/
-#ifdef SCCS
-static char SccsId[] = "%W% %G%";
-#endif
-
 /**
  * @file writeterm.c
  *
@@ -117,14 +113,12 @@ static Term readFromBuffer(const char *s, Term opts) {
 static bool write_term(int output_stream, Term t, bool b, yap_error_number *errp, xarg *args USES_REGS) {
   bool rc;
   Term cm = CurrentModule;
-      yhandle_t ynames=0, sh=Yap_StartHandles();		
-      int depths[3], flags = 0;
+  yhandle_t ynames=0;		
+      int flags = 0;
 
 
-      Yap_plwrite(t, GLOBAL_Stream + output_stream, depths, HR, ynames, flags, args)
+      Yap_plwrite(t, GLOBAL_Stream + output_stream, HR, ynames, flags, args)
 	      ;
-  Yap_CloseHandles(sh);
-  UNLOCK(GLOBAL_Stream[output_stream].streamlock);
   rc = true;
   CurrentModule = cm;
        return rc;
@@ -148,56 +142,55 @@ bool Yap_WriteTerm(int output_stream, Term t, Term opts USES_REGS) {
   yap_error_number err = YAP_NO_ERROR;
   int lvl = push_text_stack();
   xarg *args = NULL;
-        yhandle_t y0 = Yap_StartHandles(),
-	  yt = Yap_InitHandle(t),
-	  yargs = Yap_InitHandle(opts);
-  LOCK(GLOBAL_Stream[output_stream].streamlock);
-args = Yap_ArgListToVector(opts, write_defs, WRITE_END,NULL,
-                                   DOMAIN_ERROR_WRITE_OPTION);
-  if (args == NULL) {
-    if (LOCAL_Error_TYPE)
-      Yap_ThrowError(LOCAL_Error_TYPE, opts, NULL);
-    return false;
- }
+   yhandle_t  yt = Yap_InitHandle(t);
+  yhandle_t y0 = yt,
+    yargs = Yap_InitHandle(opts);
   while (true) {
-    if (err != YAP_NO_ERROR) {
+ args = Yap_ArgListToVector(opts, write_defs, WRITE_END,NULL,
+                                   DOMAIN_ERROR_WRITE_OPTION);
+ if (args == NULL) {
+   if (LOCAL_Error_TYPE) {
+     t = Yap_GetFromHandle(yt);
+      opts = Yap_GetFromHandle(yargs);
+      Yap_ThrowError(LOCAL_Error_TYPE, opts, NULL);
+   }
+    CLOSE_LOCAL_STACKS_AND_RETURN(y0,lvl) false;
+ }
+ if (err != YAP_NO_ERROR) {
       //      HR = VarOfTerm(Yap_GetFromHandle(ylow));
       //HB = B->cp_h;
       //      clean_tr(B->cp_tr+mytr PASS_REGS);
-      Yap_CloseHandles(y0);
 
       if (err == RESOURCE_ERROR_TRAIL) {
 
 	if (!Yap_growtrail(0, false)) {
+      t = Yap_GetFromHandle(yt);
+      opts = Yap_GetFromHandle(yargs);
 	  Yap_ThrowError(RESOURCE_ERROR_TRAIL, TermNil, "while visiting terms");
 	}
       } else if (err == RESOURCE_ERROR_STACK) {
 	//    printf("In H0=%p Hb=%ld H=%ld G0=%ld GF=%ld ASP=%ld\n",H0, cs->oHB-H0,
 	//     cs->oH-H0, ArenaPt(*arenap)-H0,ArenaLimit(*arenap)-H0,(LCL0-cs->oASP)-H0)  ;
 	if (!Yap_dogcl(0 PASS_REGS)) {
+      t = Yap_GetFromHandle(yt);
+      opts = Yap_GetFromHandle(yargs);
 	  Yap_ThrowError(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
 	}
     //     printf("In H0=%p Hb=%ld H=%ld G0=%ld GF=%ld ASP=%ld\n",H0, cs->oHB-H0,
      //      cs->oH-H0, ArenaPt(*arenap)-H0,ArenaLimit(*arenap)-H0,LCL0-cs->oASP-H0)  ;
   }
+ }
       t = Yap_GetFromHandle(yt);
       opts = Yap_GetFromHandle(yargs);
       
-    args = Yap_ArgListToVector(opts, write_defs, WRITE_END,NULL,
-                                   DOMAIN_ERROR_WRITE_OPTION);
-    if (args == NULL) {
-      return false;
-    }
-    }
-    o = write_term(output_stream, t, false,&err, args PASS_REGS);
+     o = write_term(output_stream, t, false,&err, args PASS_REGS);
     if (o)
       break;
   }
-    UNLOCK(GLOBAL_Stream[output_stream].streamlock);
-    Yap_CloseHandles(y0);
-  pop_text_stack(lvl);
-  return o;
+  CLOSE_LOCAL_STACKS_AND_RETURN(y0,lvl) o;
 }
+
+
 
 /** @pred  write_term(+ _T_, + _Opts_) is iso
 
@@ -280,7 +273,7 @@ static Int write_term3(USES_REGS1) {
 
 /** @pred  write(+ _S_, _T_) is iso
 
-vWrites term  _T_ to stream  _S_ instead of to the current output
+Writes term  _T_ to stream  _S_ instead of to the current output
 stream. Singletons variables are written as underscores.
 
 
@@ -309,6 +302,7 @@ v
 */
 static Int write1(USES_REGS1) {
 
+  
   Term t = TermTrue;
   int output_stream = LOCAL_c_output_stream;
   if (output_stream == -1)
@@ -368,15 +362,14 @@ static Int write_canonical(USES_REGS1) {
 
 static Int writeq1(USES_REGS1) {
 
-  Term t = TermTrue, tf = TermFalse;
+  Term t = TermTrue;
   int output_stream = LOCAL_c_output_stream;
   if (output_stream == -1)
     output_stream = 1;
   Term opts =
       MkPairTerm(Yap_MkApplTerm(FunctorCycles,1,&t),
-	       MkPairTerm(Yap_MkApplTerm(FunctorNumberVars,1,&tf),
 			  MkPairTerm(Yap_MkApplTerm(FunctorQuoted,1,&t),
-				     TermNil)));
+				     TermNil));
   return Yap_WriteTerm(output_stream, ARG1, opts PASS_REGS);
 }
 
@@ -433,7 +426,7 @@ static Int print(USES_REGS1) {
 
 /** @pred  display(+ _T_)
 
-
+4
 Displays term  _T_ on the current output stream. All Prolog terms are
 written in standard parenthesized prefix notation.
 
@@ -453,6 +446,7 @@ static Int display1(USES_REGS1) {
 Like display/1, but using stream  _S_ to display the term.
 
 
+
 */
 static Int display(USES_REGS1) {
   Term t = TermTrue;
@@ -467,6 +461,9 @@ static Int display(USES_REGS1) {
 
 static Int writeln1(USES_REGS1) {
   Term t = TermTrue;
+  //  fprintf(stderr,"%ld ",TR-(tr_fr_ptr)LCL0);
+  // if (TR-(tr_fr_ptr)LCL0>=52) jmp_deb(1);
+	  
   int output_stream = LOCAL_c_output_stream;
   if (output_stream == -1)
     output_stream = 1;
@@ -560,7 +557,7 @@ static Int term_to_string(USES_REGS1) {
   Term t2 = Deref(ARG2), t1 = Deref(ARG1);
   const char *s;
   if (IsVarTerm(t2)) {
-    s = Yap_TermToBuffer(t1, Quote_illegal_f | Number_vars_f);
+    s = Yap_TermToBuffer(t1, YAP_WRITE_QUOTED | Number_vars_f);
     if (!s || !MkStringTerm(s)) {
       Yap_ThrowError(RESOURCE_ERROR_HEAP, t1,
                 "Could not get memory from the operating system");
@@ -573,11 +570,9 @@ static Int term_to_string(USES_REGS1) {
   } else {
     s = StringOfTerm(t2);
   }
-  yhandle_t y0 = Yap_StartHandles();
   yhandle_t y1 = Yap_InitHandle( t1 );
   Term tf = readFromBuffer(s, TermNil);
   Int rc  = Yap_unify(tf, Yap_PopHandle(y1));
-   Yap_CloseHandles(y0);
    return rc;
 }
 
@@ -590,7 +585,7 @@ static Int term_to_atom(USES_REGS1) {
   Atom at;
   if (IsVarTerm(t2)) {
     const char *s =
-        Yap_TermToBuffer(Deref(ARG1), Quote_illegal_f | Number_vars_f);
+        Yap_TermToBuffer(Deref(ARG1), YAP_WRITE_QUOTED | Number_vars_f);
     if (!s || !(at = Yap_UTF8ToAtom((const unsigned char *)s PASS_REGS))) {
       Yap_ThrowError(RESOURCE_ERROR_HEAP, t2,
                 "Could not get memory from the operating system");
@@ -608,11 +603,45 @@ static Int term_to_atom(USES_REGS1) {
          Yap_unify(rc, ARG1);
 }
 
+/**
+ * @pred term_to_codes(Term, ListOfCodes)
+ *
+ * @arg A term
+ * @arg A list of character codes
+ * @return If _Term_ bound. generate a list of codes with the textual representation of the ternm;
+ *         else, if _List_  is given, parse the text and unify with  _Term_ .
+                                                                                                                                                                                                                                                                                                                                                                                                                                             *         else return an error.
+ */
+static Int term_to_codes(USES_REGS1) {
+  Term t2 = Deref(ARG2), ctl, rc = false;
+  if (IsVarTerm(t2)) {
+    const char *s =
+        Yap_TermToBuffer(Deref(ARG1), YAP_WRITE_QUOTED | Number_vars_f);
+    if (!s ) {
+      Yap_ThrowError(RESOURCE_ERROR_HEAP, t2,
+                "Could not get memory from the operating system");
+      return false;
+    }
+      return Yap_unify(ARG2, Yap_CharsToListOfCodes(s, LOCAL_encoding PASS_REGS));
+
+  } else if (!Yap_IsListTerm(t2)) {
+    Yap_ThrowError(TYPE_ERROR_LIST, t2, "atom_to_term/2");
+    return (FALSE);
+  }
+seq_tv_t inp;
+ inp.val.t  = t2;
+ inp.type = YAP_STRING_ATOMS_CODES;
+  unsigned char * buf = Yap_ListOfCodesToBuffer(NULL, t2, &inp PASS_REGS);
+  ctl = TermNil;
+  return (rc = Yap_UBufferToTerm(buf, ctl)) != 0L &&
+    Yap_unify(rc, ARG1);
+}
+
 
 
 char *Yap_TermToBuffer(Term t, int flags) {
   CACHE_REGS
-  int sno = Yap_open_buf_write_stream(LOCAL_Flags[ ENCODING_FLAG].at , flags);
+    int sno = Yap_open_buf_write_stream(-1,LOCAL_Flags[ ENCODING_FLAG].at);
 
   if (sno < 0)
     return NULL;
@@ -623,11 +652,7 @@ char *Yap_TermToBuffer(Term t, int flags) {
   GLOBAL_Stream[sno].encoding = Yap_DefaultEncoding(); 
   GLOBAL_Stream[sno].status |= CloseOnException_Stream_f;
   GLOBAL_Stream[sno].status &= ~FreeOnClose_Stream_f;
-  int depths[3];
-    depths[0] = LOCAL_max_depth;
-      depths[1] =LOCAL_max_list;
-      depths[2] = LOCAL_max_args;
-      Yap_plwrite(t, GLOBAL_Stream + sno, depths,HR,0, flags, NULL);
+  Yap_plwrite(t, GLOBAL_Stream + sno,HR,0, flags, NULL);
   char *new = Yap_MemExportStreamPtr(sno);
   Yap_CloseStream(sno);
   return new;
@@ -651,6 +676,7 @@ void Yap_InitWriteTPreds(void) {
   Yap_InitCPred("write_depth", 3, p_write_depth, SafePredFlag | SyncPredFlag);
   Yap_InitCPred("term_to_string", 2, term_to_string, 0);
   Yap_InitCPred("term_to_atom", 2, term_to_atom, 0);
+  Yap_InitCPred("term_to_codes", 2, term_to_codes, 0);
   Yap_InitCPred("write_depth", 3, p_write_depth, SafePredFlag | SyncPredFlag);
   ;
   Yap_InitCPred("current_dollar_var", 2, dollar_var, SafePredFlag);
@@ -659,4 +685,5 @@ void Yap_InitWriteTPreds(void) {
 
 /**
  * @}
+ *
  */

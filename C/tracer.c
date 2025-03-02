@@ -28,95 +28,6 @@
 #include "tracer.h"
 #include "yapio.h"
 
-static char *send_tracer_message(char *start, char *name, arity_t arity,
-                                 char *mname, CELL *args, char **s0, char *s,
-                                 char **top) {
-  CACHE_REGS
-  bool expand = false;
-  size_t max = *top - (s + 1);
-  int d, min = 1024;
-  char *s1 = s;
-  do {
-    if (expand || max < 32) {
-      Int cbeg = s1 - *s0;
-      max = *top - *s0;
-      max += min;
-      *s0 = Realloc(*s0, max);
-
-      *top = *s0 + max;
-      max--;
-      s1 = *s0 + cbeg;
-      s = s1;
-      expand = false;
-    }
-    min = 1024;
-    if (name == NULL) {
-#ifdef YAPOR
-      d = snprintf(s, max, "(%d)%s", worker_id, start);
-#else
-      d = snprintf(s, max, "%s", start);
-#endif
-    } else {
-
-      if (arity) {
-        if (args)
-          d = snprintf(s, max, "%s %s:%s(", start, mname, name);
-        else
-          d = snprintf(s, max, "%s %s:%s/%lu", start, mname, name,
-                       (unsigned long int)arity);
-      } else {
-        d = snprintf(s, max, "%s %s:%s", start, mname, name);
-      }
-    }
-    if (d >= max) {
-      expand = true;
-      min = d + 1024;
-      continue;
-    }
-    max -= d;
-    s += d;
-    if (args) {
-      int i;
-      for (i = 0; i < arity; i++) {
-        if (i > 0) {
-          if (max > 16) {
-            *s++ = ',';
-            *s++ = ' ';
-            max -= 2;
-          } else {
-            expand = true;
-            continue;
-          }
-        }
-	int l_max_depth = LOCAL_max_depth;
-	LOCAL_max_depth = 10;
-	const char *sn = Yap_TermToBuffer(args[i],
-                                          Quote_illegal_f|Handle_cyclics_f);
-	LOCAL_max_depth = l_max_depth;
-        size_t sz;
-        if (sn == NULL) {
-          sn = "<* error *>";
-        }
-        sz = strlen(sn);
-        if (max <= sz) {
-          min = sz + 1024;
-          expand = true;
-          continue;
-        }
-        strcpy(s, sn);
-        s += sz;
-        max -= sz;
-      }
-      if (arity) {
-        *s++ = ' ';
-        *s++ = ')';
-        max -= 2;
-      }
-    }
-  } while (expand);
-  s[0] = '\0';
-  return s;
-}
 
 #if defined(__GNUC__)
 unsigned long long vsc_count;
@@ -170,6 +81,97 @@ void jmp_deb(int i) {
 
 struct various_codes *sc;
 
+char *Yap_show_goal(char *start, char *name, arity_t arity,
+                                 char *mname, CELL *args, char **s0, char *s,
+                                 char **top) {
+  CACHE_REGS
+  bool expand = false;
+  size_t max = *top - (s + 1);
+  int d, min = 1024;
+  char *s1 = s;
+  do {
+    if (expand || max < 32) {
+      Int cbeg = s1 - *s0;
+      max = *top - *s0;
+      max += min;
+      *s0 = Realloc(*s0, max);
+
+      *top = *s0 + max;
+      max--;
+      s1 = *s0 + cbeg;
+      s = s1;
+      expand = false;
+    }
+    min = 1024;
+    if (name == NULL) {
+#ifdef YAPOR
+      d = snprintf(s, max, "(%d)%s", worker_id, start);
+#else
+      d = snprintf(s, max, "%s", start);
+#endif
+    } else {
+ 
+      if (arity) {
+        if (args)
+          d = snprintf(s, max, "%s %s:%s(", start, mname, name);
+        else
+          d = snprintf(s, max, "%s %s:%s/%lu", start, mname, name,
+                       (unsigned long int)arity);
+      } else {
+        d = snprintf(s, max, "%s %s:%s", start, mname, name);
+      }
+    }
+    if (d >= max) {
+      expand = true;
+      min = d + 1024;
+      continue;
+    }
+    max -= d;
+    s += d;
+    if (args) {
+      int i;
+      for (i = 0; i < arity; i++) {
+        if (i > 0) {
+          if (max > 16) {
+            *s++ = ',';
+            *s++ = ' ';
+            max -= 2;
+          } else {
+            expand = true;
+            continue;
+          }
+
+ }
+	int l_max_depth = LOCAL_max_depth;
+	LOCAL_max_depth = 20;
+	const char *sn = Yap_TermToBuffer(args[i],
+                                          0);
+	LOCAL_max_depth = l_max_depth;
+        size_t sz;
+        if (sn == NULL) {
+          sn = "<* error *>";
+         }
+        sz = strlen(sn);
+        if (max <= sz) {
+          min = sz + 1024;
+          expand = true;
+          continue;
+         }
+        strcpy(s, sn);
+        s += sz;
+         max -= sz;
+      }
+      if (arity) {
+        *s++ = ' ';
+        *s++ = ')';
+        max -= 2;
+      }
+     }
+  } while (expand);
+  s[0] = '\0';
+  return s;
+}
+
 /*
 CELL array[332];
 
@@ -209,7 +211,6 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
   //if (vsc_count==7908)
   //  jmp_deb(1);
   vsc_count++;
-
   int l = push_text_stack();
 
 //jmp_deb(1);
@@ -227,8 +228,9 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
 #ifdef THREADS
   LOCAL_ThreadHandle.thread_inst_count++;
 #endif
+  //  fprintf(stderr,"%p: %lx\n", TR, TR[-2].term);
+
 #ifdef COMMENTED
-  b = snprintf(b, top - b, "in %p\n");
   CELL *gc_ENV = ENV;
   while (gc_ENV != NULL) { /* no more environments */
     b = snprintf(b, top - b, "%ld\n", LCL0 - gc_ENV);
@@ -239,12 +241,12 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
     LOCAL_ActiveError = old;
   }
 
-  return;
+   CLOSE_BUFFERS_AND_RETURN(l);
+   
   {
     choiceptr b_p = B;
     while (b_p) {
-      b = snprintf(b, top - b, "%p %ld\n", b_p,
-                   Yap_op_from_opcode(b_p->cp_ap->opc));
+      b = snprintf(b, top - b, " %ld\n",                    Yap_op_from_opcode(b_p->cp_ap->opc));
       b_p = b_p->cp_b;
     }
   }
@@ -264,8 +266,9 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
       b = snprintf(b, top - b, "VAL %lld %d %x/%x\n", vsc_count, sz, H0[16],
                    H0[16 + end]);
     }
-  } else
-    return;
+  } else {
+    CLOSE_BUFFERS_AND_RETURN(l);
+  }
  if (old) {
     LOCAL_ActiveError = old;
   }
@@ -274,13 +277,14 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
     if (pt[140].term == 0 && pt[140].value != 0)
       jmp_deb(1);
   }
-  if (worker_id != 04 || worker_id != 03)
-    return;
+  if (worker_id != 04 || worker_id != 03) {
+    CLOSE_BUFFERS_AND_RETURN(l);
+  }
   //  if (vsc_count == 218280)
   //    vsc_xstop = 1;
   if (vsc_count < 1468068888) {
     UNLOCK(Yap_heap_regs->low_level_trace_lock);
-    return;
+    CLOSE_BUFFERS_AND_RETURN(l);
   }
   if (port != enter_pred || !pred || pred->ArityOfPE != 4 ||
       strcmp(RepAtom(NameOfFunctor(pred->FunctorOfPred))->StrOfAE,
@@ -317,7 +321,7 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
     UNLOCK(Yap_heap_regs->low_level_trace_lock);
     return;
   }
-  if (TR_FZ > TR)
+v  if (TR_FZ > TR)
     jmp_deb(1);
   {
     tr_fr_ptr pt = (tr_fr_ptr)LOCAL_TrailBase;
@@ -326,7 +330,7 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
       jmp_deb(2);
     if (pt[635].term == 0 && pt[635].value == 0 && pt[636].term != 0 &&
         pt[636].value != 0 && (TR > pt + 636 || TR_FZ > pt + 636))
-4      jmp_deb(3);
+      jmp_deb(3);
     if (pt[138].term == 0 && pt[138].value == 0 && pt[139].term != 0 &&
         pt[139].value != 0 && (TR > pt + 138 || TR_FZ > pt + 138))
       jmp_deb(4);
@@ -376,7 +380,7 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
   }
 #endif
   b += snprintf(b, top - b, "%llu " Int_FORMAT " ", vsc_count,
-                 ASP-HR);
+		LCL0-(CELL*)B);
 #if defined(THREADS) || defined(YAPOR)
   b += snprintf(b, top - b, "(%d)", worker_id);
 #endif
@@ -406,44 +410,44 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
     }
     /*    if ((pred->ModuleOfPred == 0) && (s[0] == '$'))
           return;       */
-    b = send_tracer_message("CALL: ", s, arity, mname, args, &buf, b, &top);
+    b = Yap_show_goal("CALL: ", s, arity, mname, args, &buf, b, &top);
     break;
   case try_or:
-    b = send_tracer_message("TRY_OR ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("TRY_OR ", NULL, 0, NULL, args, &buf, b, &top);
     break;
   case retry_or:
-    b = send_tracer_message("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
-    b = send_tracer_message("RETRY_OR ", NULL, 0, NULL, NULL, &buf, b, &top);
+    b = Yap_show_goal("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("RETRY_OR ", NULL, 0, NULL, NULL, &buf, b, &top);
     break;
   case retry_table_generator:
-    b = send_tracer_message("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
     mname = (char *)RepAtom(AtomOfTerm(Yap_Module_Name(pred)))->StrOfAE;
     arity = pred->ArityOfPE;
     if (arity == 0)
       s = (char *)RepAtom((Atom)pred->FunctorOfPred)->StrOfAE;
     else
       s = (char *)RepAtom(NameOfFunctor((pred->FunctorOfPred)))->StrOfAE;
-    b = send_tracer_message("RETRY GENERATOR: ", s, arity, mname, args, &buf, b,
+    b = Yap_show_goal("RETRY GENERATOR: ", s, arity, mname, args, &buf, b,
                             &top);
     break;
   case retry_table_consumer:
-    b = send_tracer_message("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
     mname = (char *)RepAtom(AtomOfTerm(Yap_Module_Name(pred)))->StrOfAE;
     arity = pred->ArityOfPE;
     if (arity == 0) {
       s = (char *)RepAtom((Atom)pred->FunctorOfPred)->StrOfAE;
-      b = send_tracer_message("RETRY CONSUMER: ", s, 0, mname, NULL, &buf, b,
+      b = Yap_show_goal("RETRY CONSUMER: ", s, 0, mname, NULL, &buf, b,
                               &top);
     } else {
       s = (char *)RepAtom(NameOfFunctor((pred->FunctorOfPred)))->StrOfAE;
-      b = send_tracer_message("RETRY CONSUMER: ", s, pred->ArityOfPE, mname,
+      b = Yap_show_goal("RETRY CONSUMER: ", s, pred->ArityOfPE, mname,
                               NULL, &buf, b, &top);
     }
     break;
   case retry_table_loader:
-    b = send_tracer_message("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
     if (pred == UndefHook) {
-      b = send_tracer_message("RETRY LOADER ", NULL, 0, NULL, NULL, &buf, b,
+      b = Yap_show_goal("RETRY LOADER ", NULL, 0, NULL, NULL, &buf, b,
                               &top);
     } else {
       mname = (char *)RepAtom(AtomOfTerm(Yap_Module_Name(pred)))->StrOfAE;
@@ -452,12 +456,12 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
         s = (char *)RepAtom((Atom)pred->FunctorOfPred)->StrOfAE;
       else
         s = (char *)RepAtom(NameOfFunctor((pred->FunctorOfPred)))->StrOfAE;
-      b = send_tracer_message("RETRY LOADER: ", s, 0, mname, NULL, &buf, b,
+      b = Yap_show_goal("RETRY LOADER: ", s, 0, mname, NULL, &buf, b,
                               &top);
     }
     break;
   case retry_pred:
-    b = send_tracer_message("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
+    b = Yap_show_goal("FAIL ", NULL, 0, NULL, args, &buf, b, &top);
     if (pred != NULL) {
       mname = (char *)RepAtom(AtomOfTerm(Yap_Module_Name(pred)))->StrOfAE;
       arity = pred->ArityOfPE;
@@ -469,7 +473,7 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
       } else {
         s = (char *)RepAtom(NameOfFunctor((pred->FunctorOfPred)))->StrOfAE;
       }
-      b = send_tracer_message("RETRY: ", s, arity, mname, args, &buf, b, &top);
+      b = Yap_show_goal("RETRY: ", s, arity, mname, args, &buf, b, &top);
     }
     break;
   }
@@ -481,8 +485,7 @@ bool low_level_trace__(yap_low_level_port port, PredEntry *pred, CELL *args) {
   *b = '\0';
   fputs(buf, stderr);
 #endif
-  pop_text_stack(l);
-  return (true);
+  CLOSE_BUFFERS_AND_RETURN(l) true;
 }
 
 void toggle_low_level_trace(void) {

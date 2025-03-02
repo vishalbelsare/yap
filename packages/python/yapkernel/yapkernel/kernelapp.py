@@ -4,93 +4,98 @@
 # Distributed under the terms of the Modified BSD License.
 
 import atexit
-import os
-import sys
 import errno
-import signal
-import traceback
-import types
 import logging
-from io import TextIOWrapper, FileIO
+import os
+import signal
+import sys
+import traceback
+from functools import partial
+from io import FileIO, TextIOWrapper
 from logging import StreamHandler
-
-from tornado import ioloop
-
-from .yapk import Jupyter4YAP
+from typing import Optional
 import zmq
-from zmq.eventloop.zmqstream import ZMQStream
-
-from IPython.core.application import (
-    BaseIPythonApplication, base_flags, base_aliases, catch_config_error
+from IPython.core.application import (  # type:ignore[attr-defined]
+    BaseIPythonApplication,
+    base_aliases,
+    base_flags,
+    catch_config_error,
 )
-from IPython.core.profiledir import ProfileDir
-from IPython.core.interactiveshell import InteractiveShell
+from .yapk import Jupyter4YAP
 from IPython.core.inputtransformer2 import TransformerManager
-from IPython.core.shellapp import (
-    InteractiveShellApp, shell_flags, shell_aliases
-)
-from ipython_genutils.path import filefind, ensure_dir_exists
-from traitlets import (
-    Any, Instance, Dict, Unicode, Integer, Bool, DottedObjectName, Type, default
-)
-from traitlets.utils.importstring import import_item
-from jupyter_core.paths import jupyter_runtime_dir
+from IPython.core.profiledir import ProfileDir
+from IPython.core.shellapp import InteractiveShellApp, shell_aliases, shell_flags
 from jupyter_client import write_connection_file
 from jupyter_client.connect import ConnectionFileMixin
+from jupyter_client.session import Session, session_aliases, session_flags
+from jupyter_core.paths import jupyter_runtime_dir
+from tornado import ioloop
+from traitlets.traitlets import (
+    Any,
+    Bool,
+    Dict,
+    DottedObjectName,
+    Instance,
+    Integer,
+    Type,
+    Unicode,
+    default,
+)
+from traitlets.utils import filefind
+from traitlets.utils.importstring import import_item
+from zmq.eventloop.zmqstream import ZMQStream
+
+from .control import ControlThread
+from .heartbeat import Heartbeat
 
 # local imports
 from .iostream import IOPubThread
-from .control import ControlThread
-from .heartbeat import Heartbeat
 from .ipkernel import YAPKernel
-from .yapk import Jupyter4YAP
 from .parentpoller import ParentPollerUnix, ParentPollerWindows
-from jupyter_client.session import (
-    Session, session_flags, session_aliases,
-)
 from .zmqshell import ZMQInteractiveShell
 
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Flags and Aliases
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 kernel_aliases = dict(base_aliases)
-kernel_aliases.update({
-    'ip' : 'YAPKernelApp.ip',
-    'hb' : 'YAPKernelApp.hb_port',
-    'shell' : 'YAPKernelApp.shell_port',
-    'iopub' : 'YAPKernelApp.iopub_port',
-    'stdin' : 'YAPKernelApp.stdin_port',
-    'control' : 'YAPKernelApp.control_port',
-    'f' : 'YAPKernelApp.connection_file',
-    'transport': 'YAPKernelApp.transport',
-})
+kernel_aliases.update(
+    {
+        "ip": "YAPKernelApp.ip",
+        "hb": "YAPKernelApp.hb_port",
+        "shell": "YAPKernelApp.shell_port",
+        "iopub": "YAPKernelApp.iopub_port",
+        "stdin": "YAPKernelApp.stdin_port",
+        "control": "YAPKernelApp.control_port",
+        "f": "YAPKernelApp.connection_file",
+        "transport": "YAPKernelApp.transport",
+    }
+)
 
 kernel_flags = dict(base_flags)
-kernel_flags.update({
-    'no-stdout' : (
-            {'YAPKernelApp' : {'no_stdout' : True}},
-            "redirect stdout to the null device"),
-    'no-stderr' : (
-            {'YAPKernelApp' : {'no_stderr' : True}},
-            "redirect stderr to the null device"),
-    'pylab' : (
-        {'YAPKernelApp' : {'pylab' : 'auto'}},
-        """Pre-load matplotlib and numpy for interactive use with
-        the default matplotlib backend."""),
-    'trio-loop' : (
-        {'IntèractiveShell' : {'trio_loop' : False}},
-        'Enable Trio as main event loop.'
-    ),
-})
+kernel_flags.update(
+    {
+        "no-stdout": ({"YAPKernelApp": {"no_stdout": True}}, "redirect stdout to the null device"),
+        "no-stderr": ({"YAPKernelApp": {"no_stderr": True}}, "redirect stderr to the null device"),
+        "pylab": (
+            {"YAPKernelApp": {"pylab": "auto"}},
+            """Pre-load matplotlib and numpy for interactive use with
+        the default matplotlib backend.""",
+        ),
+        "trio-loop": (
+            {"InteractiveShell": {"trio_loop": False}},
+            "Enable Trio as main event loop.",
+        ),
+    }
+)
 
 # inherit flags&aliases for any IPython shell apps
-kernel_aliases.update(shell_aliases)
+kernel_aliases.update(shell_aliases)  # type:ignore[arg-type]
 kernel_flags.update(shell_flags)
 
 # inherit flags&aliases for Sessions
-kernel_aliases.update(session_aliases)
-kernel_flags.update(session_flags)
+kernel_aliases.update(session_aliases)  # type:ignore[arg-type]
+kernel_flags.update(session_flags)  # type:ignore[arg-type]
 
 _ctrl_c_message = """\
 NOTE: When using the `ipython kernel` entry point, Ctrl-C will not work.
@@ -102,29 +107,33 @@ To read more about this, see https://github.com/ipython/ipython/issues/2049
 
 """
 
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Application class for starting an IPython Kernel
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
-class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
-        ConnectionFileMixin):
-    name='yapkernel'
-    aliases = Dict(kernel_aliases)
-    flags = Dict(kernel_flags)
-    classes = [InteractiveShell, ZMQInteractiveShell, ProfileDir, Session]
+
+class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp, ConnectionFileMixin):
+    """The YAPKernel application class."""
+
+    name = "yapkernel"
+    aliases = Dict(kernel_aliases)  # type:ignore[assignment]
+    flags = Dict(kernel_flags)  # type:ignore[assignment]
+    classes = [YAPKernel, ZMQInteractiveShell, ProfileDir, Session]
     # the kernel class, as an importstring
-    kernel_class = Type('yapkernel.ipkernel.YAPKernel',
-                        klass='yapkernel.kernelbase.Kernel',
-    help="""The Kernel subclass to be used.
+    kernel_class = Type(
+        "yapkernel.ipkernel.YAPKernel",
+        klass="yapkernel.kernelbase.Kernel",
+        help="""The Kernel subclass to be used.
 
     This should allow easy re-use of the YAPKernelApp entry point
-    to configure and launch kernels other than YAP's own.
-    """).tag(config=True)
+    to configure and launch kernels other than IPython's own.
+    """,
+    ).tag(config=True)
     kernel = Any()
-    poller = Any() # don't restrict this even though current pollers are all Threads
+    poller = Any()  # don't restrict this even though current pollers are all Threads
     heartbeat = Instance(Heartbeat, allow_none=True)
 
-    context = Any()
+    context: Optional[zmq.Context] = Any()  # type:ignore[assignment]
     shell_socket = Any()
     control_socket = Any()
     debugpy_socket = Any()
@@ -137,16 +146,22 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
     _ports = Dict()
 
     subcommands = {
-        'install': (
-            'yapkernel.kernelspec.InstallYAPKernelSpecApp',
-            'Install the YAP kernel'
+        "install": (
+            "yapkernel.kernelspec.InstallYAPKernelSpecApp",
+            "Install the YAP kernel",
         ),
     }
 
     # connection info:
     connection_dir = Unicode()
 
-    @default('connection_dir')
+    def init_yap_shell(self):
+        """Initialize the shell channel."""
+        self.shell = getattr(self.kernel, "shell", None)
+        if self.shell:
+            self.shell.configurables.append(self)
+
+    @default("connection_dir")
     def _default_connection_dir(self):
         return jupyter_runtime_dir()
 
@@ -162,30 +177,47 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
     no_stderr = Bool(False, help="redirect stderr to the null device").tag(config=True)
     trio_loop = Bool(False, help="Set main event loop.").tag(config=True)
     quiet = Bool(True, help="Only send stdout/stderr to output stream").tag(config=True)
-    outstream_class = DottedObjectName('yapkernel.iostream.OutStream',
-        help="The importstring for the OutStream factory").tag(config=True)
-    displayhook_class = DottedObjectName('yapkernel.displayhook.ZMQDisplayHook',
-        help="The importstring for the DisplayHook factory").tag(config=True)
+    outstream_class = DottedObjectName(
+        "yapkernel.iostream.OutStream",
+        help="The importstring for the OutStream factory",
+        allow_none=True,
+    ).tag(config=True)
+    displayhook_class = DottedObjectName(
+        "yapkernel.displayhook.ZMQDisplayHook", help="The importstring for the DisplayHook factory"
+    ).tag(config=True)
+
+    capture_fd_output = Bool(
+        True,
+        help="""Attempt to capture and forward low-level output, e.g. produced by Extension libraries.
+    """,
+    ).tag(config=True)
 
     # polling
-    parent_handle = Integer(int(os.environ.get('JPY_PARENT_PID') or 0),
+    parent_handle = Integer(
+        int(os.environ.get("JPY_PARENT_PID") or 0),
         help="""kill this process if its parent dies.  On Windows, the argument
         specifies the HANDLE of the parent process, otherwise it is simply boolean.
-        """).tag(config=True)
-    interrupt = Integer(int(os.environ.get('JPY_INTERRUPT_EVENT') or 0),
+        """,
+    ).tag(config=True)
+    interrupt = Integer(
+        int(os.environ.get("JPY_INTERRUPT_EVENT") or 0),
         help="""ONLY USED ON WINDOWS
-        Interrupt this process when the parent is signaled.
-        """).tag(config=True)
+h        Interrupt this process when the parent is signaled.
+        """,
+    ).tag(config=True)
 
     def init_crash_handler(self):
+        """Initialize the crash handler."""
         sys.excepthook = self.excepthook
 
     def excepthook(self, etype, evalue, tb):
+        """Handle an exception."""
         # write uncaught traceback to 'real' stderr, not zmq-forwarder
         traceback.print_exception(etype, evalue, tb, file=sys.__stderr__)
 
     def init_poller(self):
-        if sys.platform == 'win32':
+        """Initialize the poller."""
+        if sys.platform == "win32":
             if self.interrupt or self.parent_handle:
                 self.poller = ParentPollerWindows(self.interrupt, self.parent_handle)
         elif self.parent_handle and self.parent_handle != 1:
@@ -195,13 +227,13 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
             self.poller = ParentPollerUnix()
 
     def _try_bind_socket(self, s, port):
-        iface = '%s://%s' % (self.transport, self.ip)
-        if self.transport == 'tcp':
+        iface = f"{self.transport}://{self.ip}"
+        if self.transport == "tcp":
             if port <= 0:
                 port = s.bind_to_random_port(iface)
             else:
                 s.bind("tcp://%s:%i" % (self.ip, port))
-        elif self.transport == 'ipc':
+        elif self.transport == "ipc":
             if port <= 0:
                 port = 1
                 path = "%s-%i" % (self.ip, port)
@@ -215,7 +247,7 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
 
     def _bind_socket(self, s, port):
         try:
-            win_in_use = errno.WSAEADDRINUSE
+            win_in_use = errno.WSAEADDRINUSE  # type:ignore[attr-defined]
         except AttributeError:
             win_in_use = None
 
@@ -236,40 +268,52 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         """write connection info to JSON file"""
         cf = self.abs_connection_file
         self.log.debug("Writing connection file: %s", cf)
-        write_connection_file(cf, ip=self.ip, key=self.session.key, transport=self.transport,
-        shell_port=self.shell_port, stdin_port=self.stdin_port, hb_port=self.hb_port,
-        iopub_port=self.iopub_port, control_port=self.control_port)
+        write_connection_file(
+            cf,
+            ip=self.ip,
+            key=self.session.key,
+            transport=self.transport,
+            shell_port=self.shell_port,
+            stdin_port=self.stdin_port,
+            hb_port=self.hb_port,
+            iopub_port=self.iopub_port,
+            control_port=self.control_port,
+        )
 
     def cleanup_connection_file(self):
+        """Clean up our connection file."""
         cf = self.abs_connection_file
         self.log.debug("Cleaning up connection file: %s", cf)
         try:
             os.remove(cf)
-        except (IOError, OSError):
+        except OSError:
             pass
 
         self.cleanup_ipc_files()
 
     def init_connection_file(self):
+        """Initialize our connection file."""
         if not self.connection_file:
-            self.connection_file = "kernel-%s.json"%os.getpid()
+            self.connection_file = "kernel-%s.json" % os.getpid()
         try:
-            self.connection_file = filefind(self.connection_file, ['.', self.connection_dir])
-        except IOError:
+            self.connection_file = filefind(self.connection_file, [".", self.connection_dir])
+        except OSError:
             self.log.debug("Connection file not found: %s", self.connection_file)
             # This means I own it, and I'll create it in this directory:
-            ensure_dir_exists(os.path.dirname(self.abs_connection_file), 0o700)
+            os.makedirs(os.path.dirname(self.abs_connection_file), mode=0o700, exist_ok=True)
             # Also, I will clean it up:
             atexit.register(self.cleanup_connection_file)
             return
         try:
             self.load_connection_file()
         except Exception:
-            self.log.error("Failed to load connection file: %r", self.connection_file, exc_info=True)
+            self.log.error(
+                "Failed to load connection file: %r", self.connection_file, exc_info=True
+            )
             self.exit(1)
 
     def init_sockets(self):
-        # Create a context, a session, and the kernel sockets.
+        """Create a context, a session, and the kernel sockets."""
         self.log.info("Starting the kernel at pid: %i", os.getpid())
         assert self.context is None, "init_sockets cannot be called twice!"
         self.context = context = zmq.Context()
@@ -285,17 +329,17 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         self.stdin_port = self._bind_socket(self.stdin_socket, self.stdin_port)
         self.log.debug("stdin ROUTER Channel on port: %i" % self.stdin_port)
 
-        if hasattr(zmq, 'ROUTER_HANDOVER'):
+        if hasattr(zmq, "ROUTER_HANDOVER"):
             # set router-handover to workaround zeromq reconnect problems
             # in certain rare circumstances
-            # see ipython/yapkernel#270 and zeromq/libzmq#2892
-            self.shell_socket.router_handover = \
-                self.stdin_socket.router_handover = 1
+            # see ipython/ipykernel#270 and zeromq/libzmq#2892
+            self.shell_socket.router_handover = self.stdin_socket.router_handover = 1
 
         self.init_control(context)
         self.init_iopub(context)
 
     def init_control(self, context):
+        """Initialize the control channel."""
         self.control_socket = context.socket(zmq.ROUTER)
         self.control_socket.linger = 1000
         self.control_port = self._bind_socket(self.control_socket, self.control_port)
@@ -309,15 +353,16 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         if self.shell_socket.getsockopt(zmq.LAST_ENDPOINT):
             self.debug_shell_socket.connect(self.shell_socket.getsockopt(zmq.LAST_ENDPOINT))
 
-        if hasattr(zmq, 'ROUTER_HANDOVER'):
+        if hasattr(zmq, "ROUTER_HANDOVER"):
             # set router-handover to workaround zeromq reconnect problems
             # in certain rare circumstances
-            # see ipython/yapkernel#270 and zeromq/libzmq#2892
+            # see ipython/ipykernel#270 and zeromq/libzmq#2892
             self.control_socket.router_handover = 1
 
         self.control_thread = ControlThread(daemon=True)
 
     def init_iopub(self, context):
+        """Initialize the iopub channel."""
         self.iopub_socket = context.socket(zmq.PUB)
         self.iopub_socket.linger = 1000
         self.iopub_port = self._bind_socket(self.iopub_socket, self.iopub_port)
@@ -360,20 +405,23 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         if self.debug_shell_socket and not self.debug_shell_socket.closed:
             self.debug_shell_socket.close()
 
-        for channel in ('shell', 'control', 'stdin'):
+        for channel in ("shell", "control", "stdin"):
             self.log.debug("Closing %s channel", channel)
             socket = getattr(self, channel + "_socket", None)
             if socket and not socket.closed:
                 socket.close()
         self.log.debug("Terminating zmq context")
-        self.context.term()
+        if self.context:
+            self.context.term()
         self.log.debug("Terminated zmq context")
 
     def log_connection_info(self):
         """display connection info, and store ports"""
         basename = os.path.basename(self.connection_file)
-        if basename == self.connection_file or \
-            os.path.dirname(self.connection_file) == self.connection_dir:
+        if (
+            basename == self.connection_file
+            or os.path.dirname(self.connection_file) == self.connection_dir
+        ):
             # use shortname
             tail = basename
         else:
@@ -390,23 +438,27 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
             self.log.info(line)
         # also raw print to the terminal if no parent_handle (`ipython kernel`)
         # unless log-level is CRITICAL (--quiet)
-        if not self.parent_handle and self.log_level < logging.CRITICAL:
+        if not self.parent_handle and int(self.log_level) < logging.CRITICAL:
             print(_ctrl_c_message, file=sys.__stdout__)
             for line in lines:
                 print(line, file=sys.__stdout__)
 
-        self._ports = dict(shell=self.shell_port, iopub=self.iopub_port,
-                                stdin=self.stdin_port, hb=self.hb_port,
-                                control=self.control_port)
+        self._ports = dict(
+            shell=self.shell_port,
+            iopub=self.iopub_port,
+            stdin=self.stdin_port,
+            hb=self.hb_port,
+            control=self.control_port,
+        )
 
     def init_blackhole(self):
         """redirects stdout/stderr to devnull if necessary"""
         if self.no_stdout or self.no_stderr:
-            blackhole = open(os.devnull, 'w')
+            blackhole = open(os.devnull, "w")  # noqa
             if self.no_stdout:
-                sys.stdout = sys.__stdout__ = blackhole
+                sys.stdout = sys.__stdout__ = blackhole  # type:ignore
             if self.no_stderr:
-                sys.stderr = sys.__stderr__ = blackhole
+                sys.stderr = sys.__stderr__ = blackhole  # type:ignore
 
     def init_io(self):
         """Redirect input streams and set a display hook."""
@@ -418,26 +470,23 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
             e_stdout = None if self.quiet else sys.__stdout__
             e_stderr = None if self.quiet else sys.__stderr__
 
-            sys.stdout = outstream_factory(self.session, self.iopub_thread,
-                                           'stdout',
-                                           echo=e_stdout)
+            if not self.capture_fd_output:
+                outstream_factory = partial(outstream_factory, watchfd=False)
+
+            sys.stdout = outstream_factory(self.session, self.iopub_thread, "stdout", echo=e_stdout)
             if sys.stderr is not None:
                 sys.stderr.flush()
-            sys.stderr = outstream_factory(
-                self.session, self.iopub_thread, "stderr", echo=e_stderr
-            )
+            sys.stderr = outstream_factory(self.session, self.iopub_thread, "stderr", echo=e_stderr)
             if hasattr(sys.stderr, "_original_stdstream_copy"):
-
                 for handler in self.log.handlers:
-                    if isinstance(handler, StreamHandler) and (
-                        handler.stream.buffer.fileno() == 2
-                    ):
-                        self.log.debug(
-                            "Seeing logger to stderr, rerouting to raw filedescriptor."
-                        )
+                    if isinstance(handler, StreamHandler) and (handler.stream.buffer.fileno() == 2):
+                        self.log.debug("Seeing logger to stderr, rerouting to raw filedescriptor.")
 
                         handler.stream = TextIOWrapper(
-                            FileIO(sys.stderr._original_stdstream_copy, "w")
+                            FileIO(
+                                sys.stderr._original_stdstream_copy,
+                                "w",
+                            )
                         )
         if self.displayhook_class:
             displayhook_factory = import_item(str(self.displayhook_class))
@@ -468,19 +517,24 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
 
             # change default file to __stderr__ from forwarded stderr
             faulthandler_enable = faulthandler.enable
+
             def enable(file=sys.__stderr__, all_threads=True, **kwargs):
                 return faulthandler_enable(file=file, all_threads=all_threads, **kwargs)
 
             faulthandler.enable = enable
 
-            if hasattr(faulthandler, 'register'):
+            if hasattr(faulthandler, "register"):
                 faulthandler_register = faulthandler.register
+
                 def register(signum, file=sys.__stderr__, all_threads=True, chain=False, **kwargs):
-                    return faulthandler_register(signum, file=file, all_threads=all_threads,
-                                                 chain=chain, **kwargs)
+                    return faulthandler_register(
+                        signum, file=file, all_threads=all_threads, chain=chain, **kwargs
+                    )
+
                 faulthandler.register = register
 
     def init_signal(self):
+        """Initialize the signal handler."""
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     def init_kernel(self):
@@ -491,37 +545,36 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         self.control_thread.start()
         kernel_factory = self.kernel_class.instance
 
-        kernel = kernel_factory(parent=self, session=self.session,
-                                control_stream=control_stream,
-                                debugpy_stream=debugpy_stream,
-                                debug_shell_socket=self.debug_shell_socket,
-                                shell_stream=shell_stream,
-                                control_thread=self.control_thread,
-                                iopub_thread=self.iopub_thread,
-                                iopub_socket=self.iopub_socket,
-                                stdin_socket=self.stdin_socket,
-                                log=self.log,
-                                profile_dir=self.profile_dir,
-                                user_ns=self.user_ns,
+        kernel = kernel_factory(
+            parent=self,
+            session=self.session,
+            control_stream=control_stream,
+            debugpy_stream=debugpy_stream,
+            debug_shell_socket=self.debug_shell_socket,
+            shell_stream=shell_stream,
+            control_thread=self.control_thread,
+            iopub_thread=self.iopub_thread,
+            iopub_socket=self.iopub_socket,
+            stdin_socket=self.stdin_socket,
+            log=self.log,
+            profile_dir=self.profile_dir,
+            user_ns=self.user_ns,
         )
-        kernel.record_ports({
-            name + '_port': port for name, port in self._ports.items()
-        })
+        kernel.record_ports({name + "_port": port for name, port in self._ports.items()})
         self.kernel = kernel
 
         # Allow the displayhook to get the execution count
         self.displayhook.get_execution_count = lambda: kernel.execution_count
 
     def init_gui_pylab(self):
-        print("gui")
         """Enable GUI event loop integration, taking pylab into account."""
 
         # Register inline backend as default
         # this is higher priority than matplotlibrc,
         # but lower priority than anything else (mpl.use() for instance).
         # This only affects matplotlib >= 1.5
-        if not os.environ.get('MPLBACKEND'):
-            os.environ['MPLBACKEND'] = 'module://matplotlib_inline.backend_inline'
+        if not os.environ.get("MPLBACKEND"):
+            os.environ["MPLBACKEND"] = "module://matplotlib_inline.backend_inline"
 
         # Provide a wrapper for :meth:`InteractiveShellApp.init_gui_pylab`
         # to ensure that any exception is printed straight to stderr.
@@ -530,32 +583,30 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         # is not associated with any execute request.
 
         shell = self.shell
+        assert shell is not None
         _showtraceback = shell._showtraceback
         try:
             # replace error-sending traceback with stderr
             def print_tb(etype, evalue, stb):
-                print ("GUI event loop or pylab initialization failed",
-                       file=sys.stderr)
-                print (shell.InteractiveTB.stb2text(stb), file=sys.stderr)
+                print("GUI event loop or pylab initialization failed", file=sys.stderr)
+                assert shell is not None
+                print(shell.InteractiveTB.stb2text(stb), file=sys.stderr)
+
             shell._showtraceback = print_tb
             InteractiveShellApp.init_gui_pylab(self)
         finally:
             shell._showtraceback = _showtraceback
 
-    def init_shell(self):
-        self.shell = getattr(self.kernel, 'shell', None)
-        if self.shell:
-            self.shell.configurables.append(self)
 
     def configure_tornado_logger(self):
-        """ Configure the tornado logging.Logger.
+        """Configure the tornado logging.Logger.
 
         Must set up the tornado logger or else tornado will call
         basicConfig for the root logger which makes the root logger
         go to the real sys.stderr instead of the capture streams.
         This function mimics the setup of logging.basicConfig.
         """
-        logger = logging.getLogger('tornado')
+        logger = logging.getLogger("tornado")
         handler = logging.StreamHandler()
         formatter = logging.Formatter(logging.BASIC_FORMAT)
         handler.setFormatter(formatter)
@@ -586,11 +637,9 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         """
         if sys.platform.startswith("win") and sys.version_info >= (3, 8):
             import asyncio
+
             try:
-                from asyncio import (
-                    WindowsProactorEventLoopPolicy,
-                    WindowsSelectorEventLoopPolicy,
-                )
+                from asyncio import WindowsProactorEventLoopPolicy, WindowsSelectorEventLoopPolicy
             except ImportError:
                 pass
                 # not affected
@@ -606,18 +655,21 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         With the non-interruptible version, stopping pdb() locks up the kernel in a
         non-recoverable state.
         """
-        import pdb
+        import pdb  # noqa
+
         from IPython.core import debugger
+
         if hasattr(debugger, "InterruptiblePdb"):
             # Only available in newer IPython releases:
-            debugger.Pdb = debugger.InterruptiblePdb
-            pdb.Pdb = debugger.Pdb
-            pdb.set_trace = debugger.set_trace
+            debugger.Pdb = debugger.InterruptiblePdb  # type:ignore
+            pdb.Pdb = debugger.Pdb  # type:ignore
+            pdb.set_trace = debugger.set_trace  # type:ignore[assignment]
 
     @catch_config_error
     def initialize(self, argv=None):
+        """Initialize the application."""
         self._init_asyncio_patch()
-        super(YAPKernelApp, self).initialize(argv)
+        super().initialize(argv)
         if self.subapp is not None:
             return
 
@@ -638,38 +690,25 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         except Exception:
             # Catch exception when initializing signal fails, eg when running the
             # kernel on a separate thread
-            if self.log_level < logging.CRITICAL:
+            if int(self.log_level) < logging.CRITICAL:
                 self.log.error("Unable to initialize signal:", exc_info=True)
         self.init_kernel()
         # shell init steps
         self.init_path()
-        self.init_shell()
+        self.init_yap_shell()
         if self.shell:
-            #InteractiveShell.run_cell_async = Jupyter4YAP.run_cell_async
-            # InteractiveShell.split_cell = Jupyter4YAP.split_cell
-            # InteractiveShell.prolog_call = Jupyter4YAP.prolog_call
-            # InteractiveShell.prolog = Jupyter4YAP.prolog
-            # InteractiveShell.syntaxErrors = Jupyter4YAP.syntaxErrors
-            #InteractiveShell.YAPinit = Jupyter4YAP.init
-            InteractiveShell.showindentationerror = lambda self: False
             self.init_gui_pylab()
             self.init_extensions()
             self.init_code()
-#flush stdout/stderr, so that anything written to these streams during
+        # flush stdout/stderr, so that anything written to these streams during
         # initialization do not get associated with the first execution request
         sys.stdout.flush()
         sys.stderr.flush()
 
     def start(self):
+        """Start the application."""
         # InteractiveShell.prolog=Jupyter4YAP.prolog
         # InteractiveShell.prolog_call=Jupyter4YAP.prolog_call
-        InteractiveShell.run_cell_async=Jupyter4YAP.run_cell_async
-        TransformerManager.old_tm = TransformerManager.transform_cell
-        TransformerManager.transform_cell = Jupyter4YAP.transform_cell
-        TransformerManager.old_checc = TransformerManager.check_complete
-        TransformerManager.check_complete = Jupyter4YAP.check_complete
-        InteractiveShell.complete = Jupyter4YAP.complete
-        InteractiveShell.showindentationerror = lambda self: False
         #self.yap = Jupyter4YAP(self)
         if self.subapp is not None:
             return self.subapp.start()
@@ -679,6 +718,7 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         self.io_loop = ioloop.IOLoop.current()
         if self.trio_loop:
             from yapkernel.trio_runner import TrioRunner
+
             tr = TrioRunner()
             tr.initialize(self.kernel, self.io_loop)
             try:
@@ -688,18 +728,19 @@ class YAPKernelApp(BaseIPythonApplication, InteractiveShellApp,
         else:
             try:
                 self.io_loop.start()
-            except KeyboardIntberrupt:
+            except KeyboardInterrupt:
                 pass
+
 
 launch_new_instance = YAPKernelApp.launch_instance
 
 
-def main():
+def main():  # pragma: no cover
     """Run an YAPKernel as an application"""
     app = YAPKernelApp.instance()
     app.initialize()
     app.start()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

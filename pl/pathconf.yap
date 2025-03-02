@@ -55,7 +55,7 @@ library_directory( Dir ) :-
 
 
 commons_directory( Path ):-
-    system_commons( Path ).
+    commons_library( Path ).
 
 /**
   @pred foreign_directory(? _Directory_:atom) is nondet, dynamic
@@ -108,21 +108,21 @@ foreign_directory(yap('lib64')).
 ```
 */
 
-:- dynamic prolog_file_type/2.
+:- dynamic user:prolog_file_type/2.
 
-prolog_file_type(yap, prolog).
-prolog_file_type(pl, prolog).
-prolog_file_type(prolog, prolog).
-prolog_file_type(so,executable).
-prolog_file_type(dll, executable).
-prolog_file_type(dylib, executable).
-prolog_file_type(A, prolog) :-
+user:prolog_file_type(yap, prolog).
+user:prolog_file_type(pl, prolog).
+user:prolog_file_type(prolog, prolog).
+user:prolog_file_type(so,executable).
+user:prolog_file_type(dll, executable).
+user:prolog_file_type(dylib, executable).
+user:prolog_file_type(A, prolog) :-
 	current_prolog_flag(associate, A),
 	A \== prolog,
 	A \== pl,
 	A \== yap.
-prolog_file_type(qly, qly).
-prolog_file_type(A, executable) :-
+user:prolog_file_type(qly, qly).
+user:prolog_file_type(A, executable) :-
 	current_prolog_flag(shared_object_extension, A).
   	prolog_file_type(pyd, executable).
 
@@ -143,7 +143,7 @@ file_search_path(swi, Home) :-
 file_search_path(yap, Home) :-
         current_prolog_flag(home, Home).
 file_search_path(system, Dir) :-
-  prolog_flag(host_type, Dir).
+  current_prolog_flag(host_type, Dir).
 file_search_path(foreign, Dir) :-
   foreign_directory(Dir).
 file_search_path(executable, Dir) :-
@@ -154,7 +154,7 @@ file_search_path(path, C) :-
           ->  atomic_list_concat(B, ;, A)
         ;   atomic_list_concat(B, :, A)
         ),
-        '$member'(C, B)
+        member(C, B)
     ).
 
 ```
@@ -189,7 +189,7 @@ file_search_path(path, C) :-
 	->  atomic_list_concat(B, ;, A)
 	;   atomic_list_concat(B, :, A)
 	),
-	'$member'(C, B)
+	member(C, B)
     ).
 
 

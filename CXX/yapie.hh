@@ -1,11 +1,11 @@
 /**
  *   @file yapie.hh
  *
- *   @defgroup yap-cplus-error-handling Error Handling in the C++ YAP API.
+ *   @defgroup FLI_YAP-cplus-error-handling Error Handling in the C++ YAP API.
  *
  *   @brief  error handling in C++ and OO languages
  *
- *   @ingroup yap-cplus-interface
+ *   @ingroup FLI_YAP-cplus-interface
  *  
  *
  *   @{
@@ -23,6 +23,7 @@
 #ifndef YAPIE_HH
 #define YAPIE_HH
 
+#include "Regs.h"
 class X_API YAPPPredicate;
 
 
@@ -30,15 +31,22 @@ class X_API YAPPPredicate;
 /// take information on a Prolog error:
 class X_API YAPError {
 		      //int swigcode;
-  yap_error_descriptor_t *info;
+
 
 public:
+  yap_error_descriptor_t *info;
   /// wraps the default error descriptor
   YAPError() {
     CACHE_REGS
-    info = LOCAL_ActiveError;
-    if (!info)
+#if THREADS
+      if (!Yap_local[0] ||
+	  !Yap_local[worker_id])
+	return;
+#endif
+    if (!LOCAL_ActiveError)
       LOCAL_ActiveError = info = (yap_error_descriptor_t *)calloc( sizeof( yap_error_descriptor_t ), 1);
+    else
+      info = LOCAL_ActiveError;
     //  if (info->errorNo != YAP_NO_ERROR) {};
     //std::cerr << "Error detected" << info->errorNo << "\n";
   }
@@ -65,7 +73,7 @@ public:
   YAPError( const char * file, const char * function, int lineno,
 	    yap_error_number id, YAP_Term culprit, const char * txt) {
     info = (yap_error_descriptor_t *)calloc( sizeof( yap_error_descriptor_t ), 1);
-    Yap_MkErrorRecord(info, file, function, lineno, id, culprit, txt);
+    Yap_MkErrorRecord(info, file, function, lineno, id, culprit, TermNil, txt);
   }
 
   /// short version

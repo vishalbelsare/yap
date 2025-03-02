@@ -26,13 +26,14 @@
  *
 */
 
-:- module(random, [
+:- module(rok_random, [
 	random/1,
-	random/3,
-	randseq/3,
-	randset/3,
-	getrand/1,
-	setrand/1
+	random/1 as rok_random,
+	rok_random/3,
+	randseq/3 as rok_randseq,
+	randset/3 as rok_randset,
+	getrand/1 as rok_getrand,
+	setrand/1 as rok_setrand
     ]).
 
 /**
@@ -132,7 +133,7 @@ random number generator. The integer `X` must be in the range
 :- use_module(library(lists)).
 
 
-:- load_foreign_files([yap_random], [], init_random).
+:- load_foreign_files([], ['YAPSimpleRandom'], init_random).
 
 
 %   random(R) binds R to a new random number in [0.0,1.0)
@@ -141,7 +142,7 @@ random number generator. The integer `X` must be in the range
 %   when L and U are integers (note that U will NEVER be generated),
 %   or to a random floating number in [L,U) otherwise.
 
-random(L, U, R) :-
+rok_random(L, U, R) :-
 	( integer(L), integer(U) ->
 	    U > L,
 	    random(X),
@@ -153,7 +154,7 @@ random(L, U, R) :-
 	    R is L+((U-L)*X)
 	).
 
-/*  There are two versions of this operation.
+/**  There are two versions of this operation.
 
 	randset(K, N, S)
 

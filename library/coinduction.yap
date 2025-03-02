@@ -18,7 +18,7 @@
 /**
  * @file   coinduction.yap
  * @author VITOR SANTOS COSTA <vsc@VITORs-MBP.lan>, Arvin Bansal,
- * @author Includes nice extensions from Jan Wielemaker (from the SWI version). *
+ * @author Includes nice extensions from Jan Wielemaker (from the SWI version).
  *
  * @date   Tue Nov 17 14:55:02 2015
  *
@@ -27,7 +27,7 @@
  *
 */
 
-% :- yap_flag(unknown,error).
+% :- set_prolog_flag(unknown,error).
 % :- style_check(all).
 
 
@@ -88,6 +88,12 @@ regardless of the cycle-length.
 
 %-----------------------------------------------------
 
+/**
+  * coinductive( +Spec )
+  *
+  * declare a predicate or set of predicates to be coinductive (see @ref coinduction).
+  *
+  */
 coinductive(Spec) :-
 	var(Spec),
 	!,
@@ -169,7 +175,7 @@ in_stack(G, [_|T], End) :- in_stack(G, T, End).
 
 writeG_val(G_var) :- 
   b_getval(G_var, G_val),
->  write(G_var), write(' ==> '), write(G_val), nl.
+  write(G_var), write(' ==> '), write(G_val), nl.
 
 %-----------------------------------------------------
 

@@ -23,7 +23,7 @@
  *
  * @defgroup sicsatts SICStus style attribute declarations
  *
- *  @ingroup SICS_attributes
+ *  @ingroup AttributedVariables
  *
  * @{
  *
@@ -134,7 +134,7 @@ on how they are prefixed:
 
    + +( _Attribute_ )
    Associate  _Var_ with  _Attribute_. A previous value for the
-   attribute is simply replace (like with `set_mutable/2`).
+   attribute is simply replace (like with set_mutable/2).
 
    + -( _Attribute_ )
    Remove the attribute with the same name. If no such attribute existed,
@@ -155,7 +155,9 @@ expand_get_attributes([+G1],Mod,V,attributes:get_att(V,Mod,Pos,A)) :-
 expand_get_attributes([G1],Mod,V,attributes:get_att(V,Mod,Pos,A)) :-
 	existing_attribute(G1,Mod,1,Pos), !,
 	arg(1,G1,A).
-expand_get_attributes(Atts,Mod,Var,attributes:get_module_atts(Var,AccessTerm)) :- Atts = [_|_], !,
+expand_get_attributes(Atts,Mod,Var,attributes:get_module_atts(Var,AccessTerm)) :-
+    Atts = [_|_],
+    !,
 	attributed_module(Mod,NOfAtts,AccessTerm),
 	void_term(Void),
 	cvt_atts(Atts,Mod,Void,LAtts),

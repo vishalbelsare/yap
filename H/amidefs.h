@@ -69,7 +69,7 @@
 #include <stdio.h>
 #endif
 
-#if ALIGN_LONGS
+#if ALIGN_LONGS||1
 /*   */ typedef Int DISPREG;
 /*   */ typedef CELL SMALLUNSGN;
 /*   */ typedef Int  OPREG;
@@ -127,7 +127,7 @@ typedef enum {
 
 /* use similar trick for keeping instruction names */
 #if defined(ANALYST) || defined(DEBUG)
-extern char *Yap_op_names[_std_top + 1];
+extern const char *Yap_op_names[_std_top + 1];
 #endif
 
 typedef enum {
@@ -153,6 +153,7 @@ typedef enum {
   _div,
   _and,
   _or,
+  _xor,
   _sll,
   _slr,
   _arg,
@@ -302,6 +303,7 @@ typedef struct yami {
       CELL next;
     } cccc;
     struct {
+
       Term                c1;
       Term                c2;
       Term                c3;
@@ -326,7 +328,7 @@ typedef struct yami {
       CELL next;
     } clll;
     struct {
-      CELL    d[1+SIZEOF_DOUBLE/SIZEOF_INT_P];
+      CELL    d[1+2*SIZEOF_DOUBLE/SIZEOF_INT_P];
       CELL next;
     } d;
     struct {
@@ -339,7 +341,7 @@ typedef struct yami {
       CELL next;
     } fa;
     struct {
-      CELL    i[2];
+      CELL    i[3];
       CELL next;
     } i;
     struct {
@@ -507,7 +509,7 @@ typedef struct yami {
     } oN;
     struct {
       OPCODE              opcw;
-      CELL    d[1+SIZEOF_DOUBLE/SIZEOF_INT_P];
+      CELL    d[1+2*SIZEOF_DOUBLE/SIZEOF_INT_P];
       CELL next;
     } od;
     struct {
@@ -523,7 +525,7 @@ typedef struct yami {
     } ofa;
     struct {
       OPCODE              opcw;
-      CELL		     i[2];
+      CELL		     i[3];
       CELL next;
     } oi;
     struct {
@@ -583,7 +585,7 @@ typedef struct yami {
     } sc;
     struct {
       COUNT               s;
-      CELL    d[1+SIZEOF_DOUBLE/SIZEOF_INT_P];
+      CELL    d[1+2*SIZEOF_DOUBLE/SIZEOF_INT_P];
       struct yami        *F;
       struct yami        *T;
       CELL next;
@@ -605,7 +607,7 @@ typedef struct yami {
     struct {
       COUNT               s0;
       COUNT               s1;
-      CELL    d[1+SIZEOF_DOUBLE/SIZEOF_INT_P];
+      CELL    d[1+2*SIZEOF_DOUBLE/SIZEOF_INT_P];
       CELL next;
     } ssd;
     struct {
@@ -728,7 +730,7 @@ typedef struct yami {
     } xN;
     struct {
       wamreg                x;
-      CELL    d[1+SIZEOF_DOUBLE/SIZEOF_INT_P];
+      CELL    d[1+2*SIZEOF_DOUBLE/SIZEOF_INT_P];
       CELL next;
     } xd;
     struct {
@@ -749,7 +751,7 @@ typedef struct yami {
     } xl;
     struct {
       wamreg                x;
-      CELL    i[2];
+      CELL    i[3];
       CELL next;
     } xi;
     struct {
@@ -1072,6 +1074,14 @@ struct pred_entry *EnvPreg(yamop *p)
 {
   return (((yamop *)((CODEADDR)(p) - (CELL)NEXTOP((yamop *)NULL,Osbpp)))->y_u.Osbpp.p0);
 }
+/* trail manipulation */
+
+INLINE_ONLY tr_fr_ptr PUSH_TR(Term d1, Term frozen, tr_fr_ptr pt0, tr_fr_ptr pt1) {
+  pt0--;
+  TrailTerm(pt0) = d1;
+  TrailVal(pt0) = frozen;
+  return pt0;
+}
 
 /* access to instructions */
 
@@ -1104,6 +1114,12 @@ DEBUG_DEBUG = 4,
 DEBUG_NUMBER_OF_OPTS = 5
 } debug_key_t ;
 
+typedef enum {
+  LOCAL_EX,
+  THROW_EX
+} ex_handler_t;
 
 #endif
 
+extern int Yap_IUnify( CELL d0,  CELL d1);
+extern void Yap_TrimTrail(void);

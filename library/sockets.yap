@@ -20,7 +20,7 @@
 :- use_module(library(error)).
 :- use_module(library(apply)).
 
-/** uses SWI code
+/** 
 
 @addtogroup sockets SICStus compatible socket library
 
@@ -37,8 +37,8 @@ streams, and standard Input/Output built-ins can be used to write on or read
 from sockets. The following calls are available:
 
 
-@tbd Our implementation does not support AF_UNIX sockets.
-@tbd Implement socket_select/5
+@todo Our implementation does not support AF_UNIX sockets.
+@todo Implement socket_select/5
 @see http://www.sics.se/sicstus/docs/3.7.1/html/sicstus_28.html
 */
 
@@ -106,7 +106,7 @@ choose a port number, which is unified with  _PORT_.
 Close socket  _SOCKET_. Note that sockets used in
 `socket_connect` (that is, client sockets) should not be closed with
 `socket_close`, as they will be automatically closed when the
-corresponding stream is closed with close/1 or `close/2`.
+corresponding stream is closed with close/1 or close/2.
 
  
 */
@@ -155,6 +155,13 @@ socket_bind(Socket, 'AF_INET'(Host,Port)) :-
 	),
 	tcp_bind(Socket, Port).
 
+/**
+ * @pred tcp_socket_connect(+Socket, +Address, -StreamPair)
+ *
+ * Connect to a server waiting at _Socket_ for host at _Address_. Receive an input and an
+ * output stream.
+ *
+ */
 tcp_socket_connect(Socket, Address, StreamPair) :-
     (   Address = 'AF_INET'(Host, Port)
     ->  true

@@ -1,6 +1,7 @@
 #include "py4yap.h"
 
 #include "YapCompoundTerm.h"
+#include "pyerrors.h"
 
 #include <frameobject.h>
 
@@ -61,7 +62,7 @@ static Term python_to_term__(PyObject *pVal) {
     t[0] = MkFloatTerm(PyComplex_RealAsDouble(pVal));
     t[1] = MkFloatTerm(PyComplex_ImagAsDouble(pVal));
     return Yap_MkApplTerm(FunctorI, 2, t);
-
+  
   }
   else if (PyUnicode_Check(pVal)) {
 #if PY_MAJOR_VERSION < 3
@@ -70,45 +71,86 @@ static Term python_to_term__(PyObject *pVal) {
     sz = PyUnicode_AsWideChar((PyUnicodeObject *)pVal, a, sz - 1);
     free(ptr);
 #else
-    const char *s = PyUnicode_AsUTF8(pVal);
+    const unsigned char *s = (unsigned char*)PyUnicode_AsUTF8(pVal);
 #endif
-    if (s[0]=='\0') {
-      return MkAtomTerm(Yap_LookupAtom(""));
-    }
-    PyObject *o;
-    if ((o = PythonLookup(s, NULL))!=NULL && o  != Py_None && o != pVal)
-        return pythonToYAP(o);
-#if 0
-    if (Yap_AtomInUse(s))
-      rc = rc && PL_unify_atom_chars(t, s);
-    else
-#endif
-      if  (pyStringToString)
-        return MkStringTerm(s);
-      else
-	return MkAtomTerm(Yap_LookupAtom(s));
+      if  (pyStringToYAP == PYSTRING2STRING)
+        return MkUStringTerm(s);
+      else if  (pyStringToYAP == PYSTRING2ATOM)
+	return MkAtomTerm(Yap_ULookupAtom(s));
+     else if  (pyStringToYAP == PYSTRING2CHARS)
+     return Yap_UTF8ToDiffListOfChars(s, TermNil PASS_REGS);
+     else if  (pyStringToYAP == PYSTRING2CODES)
+     return Yap_UTF8ToDiffListOfCodes(s, TermNil PASS_REGS);
   }
+
   else if (PyByteArray_Check(pVal)) {
     return MkStringTerm(PyByteArray_AsString(pVal));
 #if PY_MAJOR_VERSION < 3
   }
   else if (PyString_Check(pVal)) {
-    return MkStringTerm(PyString_AsString(pVal));
+    return MkStringTerm(PyString_AsUTF8(pVal));
 #endif
-  }
-  else if (PyTuple_Check(pVal)) {
+  } else if (PyTuple_Check(pVal)) {
+  arity_t i=0;
     Py_ssize_t sz = PyTuple_Size(pVal);
     const char *s;
     s = Py_TYPE(pVal)->tp_name;
-    if (s == NULL)
+    if (s == NULL || !strcmp(s,"tuple")) {
       s = "t";
+  }  else if ( sz > 0 && PyUnicode_Check(pVal) && strlen(s)==1) {
+      pVal = PyTuple_GetItem(pVal, 0);
+      switch(s[0]) {
+      case 'f':
+	if (PyUnicode_Check(pVal)) {
+	  s = PyUnicode_AsUTF8(pVal);
+	  i = 1;
+	}
+	break;
+      case 'a':
+
+	if (sz==1) {
+	  pyst2yap_t  OpyStringToYAP = pyStringToYAP;
+	  pyStringToYAP = PYSTRING2ATOM;
+	 Term rc = python_to_term__(pVal);
+	  pyStringToYAP = OpyStringToYAP;
+	  return rc;
+	}
+	break;
+      case 'c':
+	if (sz==1) {
+	  pyst2yap_t  OpyStringToYAP = pyStringToYAP;
+	  pyStringToYAP = PYSTRING2CODES;
+	 Term rc = python_to_term__(pVal);
+	  pyStringToYAP = OpyStringToYAP;
+	  return rc;
+	}
+	break;
+      case 'h':
+	if (sz==1) {
+	  pyst2yap_t  OpyStringToYAP = pyStringToYAP;
+	  pyStringToYAP = PYSTRING2CHARS;
+	 Term rc = python_to_term__(pVal);
+	  pyStringToYAP = OpyStringToYAP;
+	  return rc;
+	}
+	break;
+      case 's':
+	if (sz==1) {
+	  pyst2yap_t  OpyStringToYAP = pyStringToYAP;
+	  pyStringToYAP = PYSTRING2STRING;
+	 Term rc = python_to_term__(pVal);
+	  pyStringToYAP = OpyStringToYAP;
+	  return rc;
+	}
+	break;
+      }
+    }
     if (sz == 0) {
       return MkAtomTerm(YAP_LookupAtom(Py_TYPE(pVal)->tp_name));
     }
     else {
       Functor f = Yap_MkFunctor(Yap_LookupAtom(s), sz);
       Term t = Yap_MkNewApplTerm(f, sz);
-      long i;
       CELL *ptr = RepAppl(t) + 1;
       for (i = 0; i < sz; i++) {
         PyObject *p = PyTuple_GetItem(pVal, i);
@@ -116,7 +158,9 @@ static Term python_to_term__(PyObject *pVal) {
           PyErr_Clear();
           return false;
         }
+	Py_INCREF(p);
         *ptr++ = python_to_term__(p);
+	Py_DECREF(p);
       }
       return t;
     }
@@ -155,6 +199,7 @@ static Term python_to_term__(PyObject *pVal) {
       if (PyUnicode_Check(key)) {
 	t0[0] = MkAtomTerm(Yap_LookupAtom(PyUnicode_AsUTF8(key)));
       } else {
+
 	t0[0] =python_to_term__(key);
       }
       t0[1] =  python_to_term__(value);
@@ -181,7 +226,9 @@ static Term python_to_term__(PyObject *pVal) {
 }
 
 foreign_t python_to_term(PyObject *pVal, term_t t) {
+   Py_INCREF(pVal);
   Term o = python_to_term__(pVal);
+  Py_DECREF(pVal);
   return YAP_Unify(o,YAP_GetFromSlot(t));
 }
 
@@ -197,9 +244,12 @@ X_API YAP_Term pythonToYAP(PyObject *pVal) {
   if (pVal == NULL)
     Yap_ThrowError(SYSTEM_ERROR_INTERNAL, 0, NULL);
   yhandle_t h0 = Yap_CurrentHandle();
-  Term t =  python_to_term__(pVal);
-  /* fputs("<< ***    ", stderr); */
+   Py_INCREF(pVal);
+Term t =  python_to_term__(pVal);
+  Py_DECREF(pVal);
+     /* fputs("<< ***    ", stderr); */
   /* Yap_DebugPlWrite(t); */
+
   /* fputs(" ***\n", stderr); */
   // Py_DECREF(pVal);
   Yap_CloseHandles(h0);
@@ -244,44 +294,10 @@ foreign_t assign_to_symbol(term_t t, PyObject *e) {
   if (!PL_get_atom_chars(t, &s)) {
     return false;
   }
-  PyObject *dic;
-  if (!lookupPySymbol(s, 0, NULL, &dic))
-    dic = py_Main;
-  Py_INCREF(e);
-  return PyObject_SetAttrString(dic, s, e) == 0;
+  return assign_symbol(s,NULL,e) != NULL;
 }
 
 
-/** tries to assign an element of an array/embedded lists */
-static bool assign_symbol(const char *s, PyObject *ctx, PyObject *o)
-{
-  if (ctx && ctx !=Py_None && PyObject_HasAttrString(ctx, s)) {
-    if (PyObject_SetAttrString(ctx, s, o)==0)
-      return o;
-  }
-  if (ctx && PyDict_Check(ctx)) {
-    if (PyDict_SetItemString(ctx, s, o) == 0)
-      return o;
-                  PyErr_SetString(PyExc_TypeError,
-    		 "obj.s does not exist, 1assignment failed");
-    return NULL;
-  }
-  PyObject *py_Local = PyEval_GetLocals();
-  if (py_Local && py_Local !=Py_None && PyObject_HasAttrString(py_Local, s)) {
-    if (PyObject_SetAttrString(py_Local, s, o)==0)
-      return o;
-  }
-  PyObject *py_Global = PyEval_GetGlobals();
-  if (py_Global && py_Global != Py_None && PyObject_HasAttrString(py_Global, s)) {
-    if (PyObject_SetAttrString(py_Global, s, o)==0)
-      return o;
-  }
-  if (py_Main && py_Main != Py_None ) {
-    if (PyObject_SetAttrString(py_Main, s, o)==0)
-      return o;
-  }
-  return NULL ;
-}
 /**
  * This is the core to the Python interface implementing
  * f = ctx(t) / <- exp
@@ -295,13 +311,10 @@ static bool assign_symbol(const char *s, PyObject *ctx, PyObject *o)
 bool
 assign_obj(PyObject* ctx, PyObject *val, YAP_Term yt, bool eval) {
   YAP_Term hd;
-  py_Context = ctx;
+  Term t = yt;
+  ctx = find_term_obj(ctx,&t,val);
   // Yap_DebugPlWriteln(yt);
-  if (yt == 0)
-    return false;
-  // a.b = [a|b]
-  if (IsPairTerm(yt)) 
-    {
+  while (IsPairTerm(yt))     {
       Term t0 = yt;
       Term *tail;
       ssize_t len;
@@ -317,27 +330,41 @@ assign_obj(PyObject* ctx, PyObject *val, YAP_Term yt, bool eval) {
     i++;
   }
   return true;
-      } else {
-	PyObject *o = yap_to_python(HeadOfTerm(yt), eval, ctx, false);
-	if (IsAtomTerm(TailOfTerm(yt))) {
-    const char *s;
-    s=AtomTermName(TailOfTerm(yt));
-    return assign_symbol(s,o,val);
+      }
+  ctx = yap_to_python(HeadOfTerm(yt), eval, ctx, false);
+  yt = TailOfTerm(yt);
   }
-        Yap_ThrowError(TYPE_ERROR_ATOM,TailOfTerm(yt),NULL);
-	return false;
-  }
-  if (IsApplTerm(yt) && FunctorOfTerm(yt) == FunctorSqbrackets) {
-    PyObject *o = yap_to_python(HeadOfTerm(ArgOfTerm(1,yt)), eval, ctx, false);
-    Term key = HeadOfTerm(ArgOfTerm(2,yt));
-    return set_item( key,  o, val, eval, false);
-  }
+  
   if (IsAtomTerm(yt)) {
     const char *s;
     s=AtomTermName(yt);
     return assign_symbol(s,ctx,val);
   }
- }
+  if (IsApplTerm(yt) && FunctorOfTerm(yt) == FunctorEmptySquareBrackets) {
+    Term key = HeadOfTerm(ArgOfTerm(1,yt));
+    ctx = yap_to_python(ArgOfTerm(2,yt), eval, ctx, false);
+    if (FunctorOfTerm(key)==FunctorModule) {
+      Int k,l;
+      PyObject * yk=yap_to_python(ArgOfTerm(1,key), true,NULL,false);
+      PyObject * yl=yap_to_python(ArgOfTerm(2,key), true,NULL,false);
+      if (PyLong_Check(yk))
+	k = PyLong_AsLong(yk);
+      else {
+	Yap_ThrowError(TYPE_ERROR_INTEGER, ArgOfTerm(1, key), "first argument of a slice");
+          return false;
+      }
+      if (PyLong_Check(yl))
+	l = PyLong_AsLong(yl);
+      else {
+	Yap_ThrowError(TYPE_ERROR_INTEGER, ArgOfTerm(2, key), "second argument1 of a slice");
+          return false;
+      }
+      PySequence_SetSlice(ctx,k,l,val);
+      return true;
+    }
+  return set_item( key,  ctx, val, eval, false);
+  }
+
   ssize_t len, i;
 if (IsApplTerm(yt) && PyTuple_Check(val) &&
       ArityOfFunctor(FunctorOfTerm(yt)) ==
@@ -348,11 +375,6 @@ if (IsApplTerm(yt) && PyTuple_Check(val) &&
     }
   return true;
  }
- if (IsAtomTerm(yt)) {
-    const char *s;
-    s=AtomTermName(yt);
-    return assign_symbol(s,ctx,val);
-  }
   return false;
 }
 
@@ -375,8 +397,8 @@ if (IsApplTerm(yt) && PyTuple_Check(val) &&
  *python find_assign.
  */
 bool python_assign(YAP_Term t, PyObject *exp, PyObject *context) {
-  PyErr_Print();
   // Yap_DebugPlWriteln(yt);
+  PyErr_Clear();
   if (IsVarTerm(t)) {
     // if (context == NULL) // prevent a.V= N*N[N-1]
     return Yap_unify(t,pythonToYAP(exp));

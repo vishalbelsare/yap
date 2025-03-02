@@ -18,6 +18,16 @@
 #ifndef ATOMS_H
 #define ATOMS_H 1
 
+/**
+   @file Atoms.h
+*/
+
+/** @defgroup AtomImplementation The key data-structures that implement the YAP Internal DB
+
+    @ingroup YAPImplementation
+ */
+
+
 #ifndef EXTERN
 #ifndef ADTDEFS_C
 #define EXTERN static
@@ -25,7 +35,6 @@
 #define EXTERN
 #endif
 #endif
-
 
 #include <wchar.h>
 
@@ -61,28 +70,27 @@ typedef struct PropEntryStruct *Prop;
 
 /* I can only define the structure after I define the actual atoms */
 
-/*		 atom structure						*/
+/**		representation of atoms in YAP						*/
 typedef struct AtomEntryStruct {
-  Atom NextOfAE;  /* used to build hash chains                    */
-  Prop PropsOfAE; /* property list for this atom                  */
+  Atom NextOfAE;  /** used to build hash chains                    */
+  Prop PropsOfAE; /** property list for this atom                  */
 #if defined(YAPOR) || defined(THREADS)
-  rwlock_t ARWLock;
+  rwlock_t ARWLock; /** concurrency */
 #endif
-
   union {
-    unsigned char uUStrOfAE[MIN_ARRAY]; /* representation of atom as a string */
-    char uStrOfAE[MIN_ARRAY]; /* representation of atom as a string           */
-    struct atom_blob blob[MIN_ARRAY];
+    unsigned char uUStrOfAE[MIN_ARRAY]; // representation of an atom as a string 
+    char uStrOfAE[MIN_ARRAY]; // representation of an atom as a string   
+    struct atom_blob blob[MIN_ARRAY]; // blobs aare very used in SWI-Prolog.
   } rep;
 } AtomEntry;
 
-// compatible with C and C++;
+/// compatible with C and C++;
 typedef struct ExtraAtomEntryStruct {
-  Atom NextOfAE;  /* used to build hash chains                    */
-  Prop PropsOfAE; /* property list for this atom                  */
+  Atom NextOfAE;  // used to build hash chains           
+    Prop PropsOfAE; // property list for this atom       
   union {
-    unsigned char uUStrOfAE[4]; /* representation of atom as a string */
-    char uStrOfAE[4];     /* representation of atom as a string           */
+    unsigned char uUStrOfAE[4]; // representation of atom as a string
+    char uStrOfAE[4];     // representation of atom as a string       
     struct atom_blob blob[2];
   } rep;
 #if defined(YAPOR) || defined(THREADS)
@@ -90,8 +98,27 @@ typedef struct ExtraAtomEntryStruct {
 #endif
 } ExtraAtomEntry;
 
-#define UStrOfAE rep.uUStrOfAE
-#define StrOfAE rep.uStrOfAE
+
+#ifdef USE_OFFSETS
+
+INLINE_ONLY Atom AbsAtom(AtomEntry *p) {
+  return (Atom)(Addr(p) - AtomBase);
+}
+
+INLINE_ONLY AtomEntry *RepAtom(Atom a) {
+  return (AtomEntry *) (AtomBase + Unsigned (a);
+}
+
+#else
+
+INLINE_ONLY Atom AbsAtom(AtomEntry *p) { return (Atom)(p); }
+
+INLINE_ONLY AtomEntry *RepAtom(Atom a) {
+  return (AtomEntry *)(a);
+}
+
+#endif
+
 
 /* Props and Atoms are stored in chains, ending with a NIL */
 #ifdef USE_OFFSETS

@@ -34,12 +34,12 @@ if (WITH_R)
       DESCRIPTION "The R Project for Statistical Computing."
       URL "https://www.r-project.org/")
 
-    add_feature_info(real "LIBR_FOUND" "The R Project for Statistical Compputing, at ${LIBR_HOME}. with libraries ${LIBR_LIBRARIES}" )
+    add_feature_info(YAPR "LIBR_FOUND" "The R Project for Statistical Compputing, at ${LIBR_HOME}. with libraries ${LIBR_LIBRARIES}" )
 
 
 
-    add_library(real  ${REAL_SOURCES})
-    target_link_libraries (real ${LIBR_LIBRARIES}   libYap)
+    add_library(YAPR  ${REAL_SOURCES})
+    target_link_libraries (YAPR ${LIBR_LIBRARIES}   libYap)
     include_directories (
       ${CMAKE_CURRENT_BINARY_DIR}
       ${CMAKE_BINARY_DIR}
@@ -61,13 +61,13 @@ if (WITH_R)
 
     check_include_file(  "Rcpp" HAVE_RCPP)
 
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/yap4r/man/yap4r-package.Rd ${CMAKE_CURRENT_BINARY_DIR}/yap4r/zzz.R ${CMAKE_CURRENT_BINARY_DIR}/yap4r/DESCRIPTION ${CMAKE_CURRENT_BINARY_DIR}/yap4r/NAMESPA`CE ${CMAKE_CURRENT_BINARY_DIR}/yap4r/src/yap4r.cpp 
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/yap4r/man/yap4r-package.Rd ${CMAKE_CURRENT_BINARY_DIR}/yap4r/zzz.R ${CMAKE_CURRENT_BINARY_DIR}/yap4r/DESCRIPTION ${CMAKE_CURRENT_BINARY_DIR}/yap4r/NAMESPACE ${CMAKE_CURRENT_BINARY_DIR}/yap4r/src/yap4r.cpp 
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/yap4r/src
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/mkdocs
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/mkdocs/docs
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/mkdocs/docs/images
       COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/mkdocs/docs/javascripts
-      COMMAND ${CMAKE_COMMAND} -E copy  ${CMAKE_CURRENT_SOURCE_DIR}/docs/custom/highlight.min.js ${CMAKE_CURRENT_BINARY_DIR}//mkdocs/docs/javascripts
+      COMMAND ${CMAKE_COMMAND} -E copy  ${CMAKE_CURRENT_SOURCE_DIR}/docs/assets/js/highlight.min.js ${CMAKE_CURRENT_BINARY_DIR}/mkdocs/docs/javascripts
       )
 
 
@@ -76,11 +76,11 @@ if (WITH_R)
       COMMAND ${LIBR_EXECUTABLE} CMD build yap4r
       VERBATIM
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      DEPENDS real  ${YAP4R_SOURCES}
+      DEPENDS YAPR  ${YAP4R_SOURCES}
       )
 
     
-install(TARGETS  real
+install(TARGETS  YAPR
     RUNTIME DESTINATION ${YAP_INSTALL_DLLDIR}
     ARCHIVE DESTINATION ${YAP_INSTALL_DLLDIR}
     LIBRARY DESTINATION ${YAP_INSTALL_DLLDIR}

@@ -19,10 +19,13 @@
  /**
   * @file lf.yap
   * @brief Implementation of load-files
-  *
-  *
   */
-%
+
+/**
+  * @addtogroup YAPReadFiles
+  * @{
+  */
+
 % SWI options
 % autoloa(true,false)
 % derived_from(File) -> make
@@ -66,10 +69,10 @@
 '$lf_option'(consult, 11, reconsult).
 '$lf_option'(stream, 12, _).
 '$lf_option'(register, 13, true).
-'$lf_option'('$files', 14, _).
+'$lf_option'(dry_run, 14, _).
 '$lf_option'('$call', 15, _).
 '$lf_option'('$use_module', 16, _).
-'$lf_option'('$consulted_at', 17, _).
+'$lf_option'('consulted_at', 17, _).
 '$lf_option'('$options', 18, _).
 '$lf_option'('$location', 19, _).
 '$lf_option'(dialect, 20, yap).
@@ -77,9 +80,10 @@
 '$lf_option'(redefine_module, 22, Warn) :-
 	( var(Warn) ->	current_prolog_flag( redefine_warnings, Redefine ), Redefine = Warn ; true ).
 '$lf_option'(reexport, 23, false).
-'$lf_option'(sandboxed, 24, false).
+'$lf_option'(build_def_map, 24, false).
+% '$lf_option'(sandboxed, 24, false).
 '$lf_option'(scope_settings, 25, false).
-'$lf_option'(modified, 26, _).
+'$lf_option'(modified, 26, true).
 '$lf_option'(source_module, 27, _).
 '$lf_option'('$parent_topts', 28, _).
 '$lf_option'(must_be_module, 29, false).
@@ -135,14 +139,14 @@
 	'$process_lf_opt'(Op, Val,Call), !,
 	'$process_lf_opts'(Opts, TOpt, File, Call).
 '$process_lf_opts'([Opt|_],_,_,Call) :-
-	throw_error(domain_error(unimplemented_option,Opt),Call).
+	throw_error(domain_error(implemented_option,Opt),Call).
 
 '$process_lf_opt'(autoload, Val, Call) :-
-	( Val == false -> true ;
-	    Val == true -> true ;
+	( %Val == false -> true ;
+	  %  Val == true -> true ;
 	    throw_error(domain_error(unimplemented_option,autoload(Val)),Call) ).
-'$process_lf_opt'(derived_from, File, Call) :-
-	( atom(File) -> true ;  throw_error(type_error(atom,File),Call) ).
+'$process_lf_opt'('consulted_at',V,_) :-
+    (var(V) ->  '$show_stream_position'(loop_stream,V) ; true ).
 '$process_lf_opt'(encoding, Encoding, _Call) :-
 	atom(Encoding).
 '$process_lf_opt'(expand, Val, Call) :-
@@ -176,10 +180,19 @@
 	( Val == false -> true ;
 	    Val == true -> true ;
 	    throw_error(domain_error(unimplemented_option,skip_unix_header(Val)),Call) ).
+'$process_lf_opt'(build_def_map, Val, Call)  :-
+	( Val == false -> true ;
+	    Val == true -> true ;
+	    throw_error(domain_error(unimplemented_option,build_def_map(Val)),Call) ).
+'$process_lf_opt'(dry_run, Val, Call)  :-
+	( Val == false -> true ;
+	    Val == true -> true ;
+	    throw_error(domain_error(unimplemented_option,build_def_map(Val)),Call) ).
 '$process_lf_opt'(compilation_mode, Val, Call) :-
     ( Val == source -> true ;
       Val == compact -> true ;
       Val == assert_all -> true ;
+      Val == ignore -> true ;
       throw_error(domain_error(unimplemented_option,compilation_mode(Val)),Call) ).
 '$process_lf_opt'(consult, Val , Call) :-
     ( Val == reconsult -> true ;
@@ -228,9 +241,12 @@
 %% @pred $load_files(Module, Path, OPtions, InitialGoal)
 %%
 %% actual interface to file-loading machinery
-'$load_files'(V0, M0, _O, Call) :-
+'$load_files'(_V0, _M0, _O, _Call) :-
+    current_prolog_flag(compiler_skip,true),
+    !.
+'$load_files'(V0, M0, O, Call) :-
     '$yap_strip_module'(M0:V0, M, V),
-    '$load_files_'(V, M, _O, Call).
+    '$load_files_'(V, M, O, Call).
 
 '$load_files_'(V, M, _O, Call) :-
     (var(V);var(M)),
@@ -270,12 +286,13 @@
 
 '$load_files_'(File, M, Opts, Call) :-
 %   writeln(+M:File),
-   current_prolog_flag(autoload,OldAutoload),
+/*   current_prolog_flag(autoload,OldAutoload),
     (
      '$memberchk'(autoload(Autoload), Opts)
       ->
-       			  set_prolog_flag(autoload,Autoload) ;
+       set_prolog_flag(autoload,Autoload) ;
        			   true), 
+*/
    ( '$memberchk'(expand(Expand),Opts) -> true ; Expand = true ),
     (
 	absolute_file_name(File, Y, [access(read),file_type(prolog),file_errors(fail),solutions(first)]) 
@@ -286,7 +303,7 @@
     ->
 	Type = qly
   ;
-    '$do_io_error'(existence_error(source_sink,File),Call)
+    throw(error(existence_error(source_sink,File),Call))
     ),
     (
 	'$memberchk'(encoding(Encoding), Opts)
@@ -295,21 +312,15 @@
     ;
     open(Y, read, Stream, [])
     ),
-   file_directory_name(Y, Dir),
-    working_directory(OldD, Dir),
     '$load_file__'(Type,File,Stream,Y, M, Opts, Call),
-    working_directory( _, OldD),
-    set_prolog_flag(autoload,OldAutoload),
-    !,
-    '$exec_initialization_goals'(Y),
+%    set_prolog_flag(autoload,OldAutoload),
     close(Stream).
 
 '$load_stream__'(Type,File,Stream, Y, M, Opts, Call) :-
     '$mk_opts'(Opts,File,Stream,M,Call,TOpts),
     b_setval('$opts',Opts),
     '$lf'(always, Type, File, Y,  Stream, M, Call, Opts, TOpts),
-    '$exec_initialization_goals'(Y),
-    close(Stream),
+     close(Stream),
      !.
 
     
@@ -321,7 +332,7 @@
     ->
     true
     ;
-    If = not_loaded
+    If = true
     ),
     (
 	'$memberchk'(qcompile(QCompiling), Opts)
@@ -338,14 +349,11 @@
 
 % consulting from a stream
 '$lf'(not_loaded, _Type,_UserFile,File, _Stream, HostM, _Call, Opts, _TOpts) :-
-'$file_loaded'(File, HostM, DonorM), !,
-'$import_module'(DonorM, HostM,File, Opts).
+    '$file_loaded'(File, HostM, DonorM), !,
+    '$import_module'(DonorM, HostM,File, Opts).
 '$lf'(unchanged, _Type,_UserFile,File,_Stream, HostM, _Call, Opts, _TOpts) :-
     '$file_unchanged'(File, HostM, DonorM), !,
     '$import_module'(DonorM, HostM,File, Opts).
-'$lf'(_, _, _UserFile,File,_Stream, _ContextModule, _Call, _TOpts) :-
-    '$being_consulted'(File),
-    !.
 '$lf'(_, qly, _UserFile,File,Stream, OuterModule, _Call, _Opts, TOpts) :-
     % check if there is a qly file
 		(
@@ -359,33 +367,29 @@
 	stream_property(Stream, file_name(Y)),
        '$qload_file'(Stream, OuterModule, File, Y, _Imports, TOpts).
 '$lf'(_, _Type, UserFile,File,Stream, OuterModule, _Call, Opts, TOpts) :-
+    file_directory_name(File, Dir),
+    working_directory(OldD,OldD),
     !,
     prompt1(': '), prompt(_,'     '),
     %	format( 'I=~w~n', [Verbosity=UserFile] ),
     % export to process
     '$conditional_compilation_get_state'(State),
-    '$conditional_compilation_init',
     (
      '$memberchk'(consult(Reconsult0), Opts)
       ->
        			  true ;
       Reconsult0 = reconsult
     ),
+    unload_file(File),
     '$lf_storefile'(File, UserFile, OuterModule, Reconsult0, Reconsult, TOpts, Opts),
-   ( Reconsult \== consult ->
-	'$start_reconsulting'(File),
-	'$start_consult'(Reconsult,File,Stream,LC)
-   ;
-	'$start_consult'(Reconsult,File,Stream,LC)
-   ),
+   	'$start_consult'(Reconsult,File,Dir,Stream,LC),
     (
      '$memberchk'(skip_unix_header(SkipUnixHeader), Opts)
       ->
        			  true ;
       SkipUnixHeader = true
     ),
-    '$report'(in, OldLoadVerbose,T0,H0,OuterModule,UserFile,Opts),
-
+    '$report'(in, OldLoadVerbose,Verbose,T0,H0,OuterModule,UserFile,Opts),
    (
 	'$memberchk'(source_module(M1),Opts)
    ->
@@ -394,28 +398,180 @@
    M1 = OuterModule
    ),
    current_source_module(_M0,M1),
-   '$loop'(Stream,Reconsult),
-    ('$module'(File,InnerModule,_,_) -> true ;InnerModule=M1),
-	% surely, we were in run mode or we would not have included the file!
-				% back to include mode!
+
+  (
+       '$memberchk'(build_def_map(true),Opts)
+   ->
+    retractall(scanner:use(_,_F,_MI,_F0,_Mod,File,_S0,_E0,_S1,_E1)),
+    retractall(scanner:def(_,_,_,File,_,_,_,_)),
+    retractall(scanner:dec(_Dom,_F,_M,File,_B,_E,_BT,_FiET)),
+   '$def_use_loop'(Stream,File,Reconsult)
+; 
+       '$memberchk'(dry_run(true),Opts)
+   ->
+   '$dry_loop'(Stream,Reconsult)
+; 
+  '$loop'(Stream,Reconsult)
+ 
+   ),
+   ( LC == 0 -> prompt(_,'   |: ') ; true),
+    current_source_module(OldM,_M0),
+    % surely, we were in run mode or we would not have included the file!
+    % back to include mode!
 %	'$memberchk'(must_be_module, Opts),
 %	'$bind_module'(InnerModule, UseModule),
-   	( LC == 0 -> prompt(_,'   |: ') ; true),
     '$conditional_compilation_set_state'(State),
-    current_source_module(_OM,_M0),
-    '$import_module'(InnerModule, M1, File, Opts),
- '$report'(out, OldLoadVerbose,T0,H0,InnerModule,File,Opts),
-    '$end_consult'.
+    ('$module'(File,InnerModule,_,_) ->
+      '$import_module'(InnerModule, M1, File, Opts),
+    '$check_module'(File,InnerModule)
+
+   ;
+   InnerModule=OldM),
+    '$report'(out, OldLoadVerbose,Verbose,T0,H0,InnerModule,File,Opts),
+ '$end_consult'(OldD),
+ '$exec_initialization_goals'(File),
+    !.
+
+'$dry_loop'(Stream,_Status) :-
+    repeat,
+  (
+   at_end_of_stream(Stream)
+->
+!
+;
+   prompt1(': '), prompt(_,'     '),
+    Options = [syntax_errors(dec10)],
+    read_clause(Stream, Clause, Options),
+(
+	Clause == end_of_file
+    ->
+
+    !
+    ;
+    '$conditional_compilation_skip'(Clause)
+    ->
+    fail
+    ;
+        Clause = (:- G1),
+        nonvar(G1),
+        G1=op(A,B,C),
+        op(A,B,C),
+        fail
+   )
+    ).
+
+'$loop'(Stream,Status) :-
+    repeat,
+   catch(
+    '$loop_'(Stream,Status),
+	 _Error,
+	 error_handler),
+  !.
+
+'$loop_'(Stream,Status) :-
+	 enter_compiler(Stream,Status) .
+
+enter_compiler(Stream,Status) :-
+    prompt1(': '), prompt(_,'     '),
+    Options = [syntax_errors(dec10),variable_names(Vars), term_position(Pos)],
+    read_clause(Stream, Clause, Options),
+    (
+	Clause == end_of_file
+    ->
+
+    !
+    ;
+    '$conditional_compilation_skip'(Clause)
+    ->
+    fail
+    ;
+    call_compiler(Clause, Status,Vars,Pos),
+    fail
+	).
+
+'$def_use_loop'(Stream, File, Status) :-
+    catch(
+	 def_use_inner(Stream,File, Status),
+	 _Error,
+	 error_handler).
+
+def_use_inner(Stream,File, Status) :-
+    repeat,
+    prompt1(': '), prompt(_,'     '),
+    Options = [syntax_errors(dec10),variable_names(Vars), term_position(Pos), scan(Toks)],
+    read_clause(Stream, Clause, Options),
+    (
+	Clause == end_of_file
+    ->
+    !
+    ;
+    '$conditional_compilation_skip'(Clause)
+    ->
+    fail
+    ;
+    scanner:add_def_use(Clause,File, Toks),
+    call_compiler(Clause, Status,Vars,Pos),
+    fail
+	).
+
+%%
+% @pred '$go_compile_clause'(G,Vs,Pos, Where, Source) is det
+%
+% interfaces the loader and the compiler
+% not 100% compatible with SICStus Prolog, as SICStus Prolog would put
+% module prefixes all over the place, although unnecessarily so.
+%
+% @param [in] _G_ is the clause to compile
+% @param [in] _Vs_ a list of variables and their name
+% @param [in] _Pos_ the source-code position
+% @param [in] _N_  a flag telling whether to add first or last
+% @param [out] _Source_ the user-tranasformed clause
+call_compiler((:-G),Status,VL,Pos) :-
+    !,
+    % allow user expansion
+    expand_term((:- G), O, _ExpandedClause),
+    '$yap_strip_module'(O, NM, NO),
+    (
+        NO = (:- G1)
+    ->
+    must_be_callable(NM:G1),
+    '$process_directive'(G1, Status , NM, VL, Pos)
+    ;
+    '$goal'(G1,VL,Pos)).
+call_compiler((?-G),_, VL, Pos) :-
+    !,
+    '$goal'(G,VL, Pos).
+call_compiler(G, Where,_VL, Pos) :-
+    current_source_module(SM,SM),
+    expand_term(G, Source,EC),
+    '$head_and_body'(EC, MH, B ),
+        strip_module( MH, Mod, H),
+    (
+	'$undefined'(H, Mod)
+    ->
+     '$handle_import_conflict'(H, Mod)
+    ;
+    true
+    ),
+        ( B==true
+    ->
+    '$compile'((Mod:H), Where, Mod:H, SM, Pos, [])
+    ;
+    '$compile'((Mod:H:-B), Where, Source, SM, Pos, [])
+    ).
+
+
 
 
 '$lf_storefile'(File, UserFile, OuterModule, Reconsult0, Reconsult, TOpts, Opts) :-
-    source_location(ParentF, Line),
-    '$tell_loaded'(File, UserFile, OuterModule, ParentF, Line, Reconsult0, Reconsult,_Dir, TOpts, Opts),
+    ( '$memberchk'('consulted_at'(Pos),Opts) -> true ; '$show_stream_position'(loop_stream,Pos) ),
+    source_location(ParentF,_),
+    '$tell_loaded'(File, UserFile, OuterModule, ParentF, Pos, Reconsult0, Reconsult,_Dir, TOpts, Opts),
     !.
 '$lf_storefile'(_UserFile, _OuterModule, _Reconsult0, _Reconsult, _TOpts, _Opts) :- 
     !.
 
-'$report'(in, OldLoadVerbose,T0,H0,_,UserFile, Opts) :-
+'$report'(in, OldLoadVerbose,Verbose,T0,H0,_,UserFile, Opts) :-
     current_prolog_flag(verbose_load, OldLoadVerbose),
     (
 	'$memberchk'(silent(Silent), Opts)
@@ -428,26 +584,30 @@
     set_prolog_flag(verbose_load, Verbose)
     ;
     OldLoadVerbose = Verbose
-    ), 
+    ),
+    % required to boot
     (
-	Verbose ==  true
+    Verbose == true
     ->
-    H0 is heapused, '$cputime'(T0,_),
+    H0	 is heapused, '$cputime'(T0,_),
     StartMessage = loading,
     print_message(informational, loading(StartMessage, UserFile))
     ;
     true
     ).
-'$report'(out, OldLoadVerbose,T0,H0,InnerModule,File,_) :-
+
+'$report'(out, OldLoadVerbose,Verbose,T0,H0,InnerModule,File,_) :-
+       % required to boot
     (
-	current_prolog_flag(verbose_load, true)
-    ->    
-    H is heapused-H0, '$cputime'(TF,_), T is TF-T0,
+    Verbose == true
+    ->
+ H is heapused-H0, '$cputime'(TF,_), T is TF-T0,
     EndMsg = consulted,
     print_message(informational, loaded(EndMsg, File,  InnerModule, T, H))
     ;
-    true),
-    set_prolog_flag(verbose_load, OldLoadVerbose).
+    true
+       ),			 
+ set_prolog_flag(verbose_load, OldLoadVerbose).
 
 '$q_do_save_file'(File, UserF, TOpts ) :-
     '$lf_opt'(qcompile, TOpts, QComp),
@@ -460,10 +620,6 @@
 '$q_do_save_file'(_File, _, _TOpts ).
 
 
-'$start_reconsulting'(F) :-
-	recorda('$reconsulted','$',_),
-	recorda('$reconsulting',F,_).
-
 
 /**
   @pred include(+ _F_) is directive
@@ -474,33 +630,35 @@
   as an replacement to consult/1 by allowing the programmer to include a
   data-base
   split into several files.
-*/
+*/	
 
-'$include'(V, _) :- var(V), !,
+include(Fs) :-
+    '$include'(Fs).
+
+'$include'(V) :- var(V), !,
 	throw_error(instantiation_error,include(V)).
-'$include'([], _) :- !.
-'$include'([F|Fs], Status) :- !,
-	'$include'(F, Status),
-	'$include'(Fs, Status).
-'$include'(File, Status) :-
+'$include'([]) :- !.
+'$include'([F|Fs]) :- !,
+	'$include'(F),
+	'$include'(Fs).
+'$include'(File) :-
     H0 is heapused, '$cputime'(T0,_),
     '$stream_and_dir'(File,Y,Dir,Stream),
     working_directory(Dir0, Dir),
-    '$including'(OV, Y),
-    stream_property(loop_stream,[encoding(Encoding)] ),
+    stream_property(loop_stream,[encoding(Encoding),file_name(Old)] ),
+    ignore(recordzifnot('$includes', (Old ->Y),_)),
     set_stream(Stream, [alias(loop_stream),encoding(Encoding)] ),
     print_message(informational, loading(including, Y)),
-    '$loop'(Stream,Status),
+    '$loop'(Stream,reconsult),
     close(Stream),
     H is heapused-H0, '$cputime'(TF,_), T is TF-T0,
-    current_source_module(Mod, Mod),
+    current_source_module(Mod,Mod),
     print_message(informational, loaded(included, Y, Mod, T, H)),
-    working_directory(_Dir, Dir0),
-    '$including'(Y, OV).
+    working_directory(_Dir, Dir0).
 
 '$stream_and_dir'(user,user_input,Dir,user_input) :-
 	!,
-        working_directory(Dir, Dir).
+        working_directory(_Dir, Dir).
 '$stream_and_dir'(user_input,user_input,Dir,user_input) :-
 	!,
         working_directory(_Dir, Dir).
@@ -517,7 +675,7 @@
 /**
 
   @pred ensure_loaded(+ _F_) is iso
-
+1
 When the files specified by  _F_ are module files,
 ensure_loaded/1 loads them if they have note been previously
 loaded, otherwise advertises the user about the existing name clashes
@@ -579,12 +737,10 @@ consult(Fs) :-
   @pred compile(+ _F_ )
 
 Updates the program by replacing the
-previous definitions for the predicates defined in  _F_. It differs from consult/1
-in that it only multifile/1 predicates are not reset in a reconsult. Instead, consult/1
-sees all predicates as multifile.
+previous definitions for the predicates defined in  _F_. 
 
 YAP also offers no difference between consult/1 and compile/1. The two
-are  implemented by the same exact code.
+are  implemented by the same code.
 
 Example:
 
@@ -596,13 +752,31 @@ Example:
 
 ```
 ?- consult(file1),
-   reconsult( [file2, file3],
+      reconsult( [file2, file3],
    consult( [file4] ).
 ```
 
 */
 reconsult(Fs) :-
 	load_files(Fs, []).
+
+
+compile_clauses(Commands) :-
+     '$active_predicate'(P),
+    (
+      member(C,Commands),
+     compile_clause(C),
+     fail;
+    '$active_predicate'(P)
+    ).
+ 
+
+compile_clause(Command) :-
+    prolog_load_context(term_position, Pos),
+    prolog_load_context(variable_names, Vs),
+    call_compiler(Command, reconsult,Vs,Pos),
+    fail.
+compile_clause(_Command).
 
 
 

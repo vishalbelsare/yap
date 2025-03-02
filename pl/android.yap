@@ -8,15 +8,15 @@
 %:- module(android,
 %	[text_to_query/2]).
 	
-:- initialization(yap_flag(verbose,_,normal)).
+:- initialization(set_prolog_flag(verbose,normal)).
 
-:- meta_predicate( text_to_query( :, - ) ).
+:- meta_predicate text_to_query( :, '-' ).
 
 text_to_query( MString, Status ) :-
-	strip_module( user:MString, Mod, String ),
-    top_query(android:query_( Mod:String, Status ) ).
+    strip_module( user:MString, Mod, String ),
+    top_query(android:query_( Mod:String, Status, _ ) ).
 
-query_( Mod:String, Status ) :-
+query_( Mod:String, Status, Bindings ) :-
   	atomic_to_term( String, Goal, VarNames ),
 	(
 	is_list(Goal) -> G = consult( Goal ) ; G = Goal ),
@@ -24,4 +24,6 @@ query_( Mod:String, Status ) :-
 
 
 user:file_search_path(data, '/data/data/pt.up.yap/files/Yap/myddas').
+
+
 %% @} 

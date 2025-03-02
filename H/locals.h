@@ -35,7 +35,7 @@ LOCAL_INIT(bool, newline, true);
 LOCAL_INIT(Atom, AtPrompt, AtomNil);
 LOCAL_ARRAY(char, Prompt, MAX_PROMPT + 1);
 
-LOCAL_ARRAY(Term, debugger_state, DEBUG_NUMBER_OF_OPTS);
+LOCAL_INIT(bool, DebEvent, false);
 
 LOCAL_INITF(encoding_t, encoding, Yap_DefaultEncoding());
 LOCAL_INIT(bool, quasi_quotations, false);
@@ -75,18 +75,9 @@ LOCAL_INIT(YAP_ULONG_LONG, RetriesCounter, 0L);
 LOCAL_INIT(int, ReductionsCounterOn, 0L);
 LOCAL_INIT(int, PredEntriesCounterOn, 0L);
 LOCAL_INIT(int, RetriesCounterOn, 0L);
-// support for consulting files
-/* current consult stack */
-LOCAL_INIT(union CONSULT_OBJ *, ConsultSp, NULL);
-/* current maximum number of cells in consult stack */
-LOCAL(UInt, ConsultCapacity);
-/* top of consult stack  */
-LOCAL_INIT(union CONSULT_OBJ *, ConsultBase, NULL);
-/* low-water mark for consult  */
-LOCAL_INIT(union CONSULT_OBJ *, ConsultLow, NULL);
 LOCAL_INIT(Term, VarNames, ((Term)0));
 LOCAL_INIT(Atom, SourceFileName, NULL);
-LOCAL_INIT(UInt, SourceFileLineno, 0);
+LOCAL_INIT(int, SourceFileLineno, 0);
 // global variables
 LOCAL_INIT_RESTORE(Term, GlobalArena, 0L, TermToGlobalOrAtomAdjust);
 LOCAL_INIT(UInt, GlobalArenaOverflows, 0L);
@@ -112,9 +103,9 @@ LOCAL_INIT(yamop *, Undef_CP, NULL);
 LOCAL_INIT(CELL *, Undef_ENV, NULL);
 LOCAL_INIT(choiceptr, Undef_B, NULL);
 LOCAL_ARRAY(unsigned char, OpBuffer, sizeof(yamop)*2);
-LOCAL_INIT(Int, StartCharCount, 0L);
-LOCAL_INIT(Int, StartLineCount, 0L);
-LOCAL_INIT(Int, StartLinePos, 0L);
+LOCAL_INIT(int, StartCharCount, 0L);
+LOCAL_INIT(int, StartLineCount, 0L);
+LOCAL_INIT(int, StartLinePos, 0L);
 LOCAL_INITF(scratch_block, ScratchPad, InitScratchPad(wid));
 LOCAL_INIT_RESTORE(Term, WokenGoals, TermNil, TermToGlobalAdjust);
 LOCAL_INIT(bool, DoNotWakeUp, false);
@@ -170,7 +161,7 @@ LOCAL(CELL *, extra_gc_cells_base);
 LOCAL(CELL *, extra_gc_cells_top);
 LOCAL_INIT(UInt, extra_gc_cells_size, 256);
 LOCAL_INIT_RESTORE(struct array_entry *, DynamicArrays, NULL, PtoArrayEAdjust);
-LOCAL_INIT_RESTORE(struct static_array_entry *, StaticArrays, NULL, PtoArraySAdjust);
+LOCAL_INIT_RESTORE(struct array_entry *, StaticArrays, NULL, PtoArrayEAdjust);
 LOCAL_INIT_RESTORE(struct global_entry *, GlobalVariables, NULL, PtoGlobalEAdjust);
 LOCAL_INIT(int, AllowRestart, FALSE);
 
@@ -216,15 +207,16 @@ LOCAL(VarEntry *, VarTail);
 LOCAL(Term, Comments);
 LOCAL(CELL *, CommentsTail);
 LOCAL(CELL *, CommentsNextChar);
-LOCAL(wchar_t *, CommentsBuff);
+LOCAL(char *, CommentsBuff);
 LOCAL(size_t, CommentsBuffPos);
 LOCAL(size_t, CommentsBuffLim);
 LOCAL_INIT(sigjmp_buf *, RestartEnv, NULL);
+LOCAL_INIT(sigjmp_buf *, TopRestartEnv, NULL);
 LOCAL_INIT(struct TextBuffer_manager *, TextBuffer, Yap_InitTextAllocator());
 
 // Prolog State
 LOCAL_INIT(UInt, BreakLevel, 0);
-LOCAL_INIT(Int, PrologMode, BootMode);
+LOCAL_INIT(prolog_exec_mode, PrologMode, BootMode);
 LOCAL_INIT(int, CritLocks, 0);
 
 // Prolog execution and state flags
@@ -317,6 +309,8 @@ LOCAL_INIT(yhandle_t, NSlots, 0);
 LOCAL_INIT(yhandle_t , HandleBorder, 0);
 LOCAL_INIT(CELL *, SlotBase, InitHandles(wid));
 
+LOCAL(DBTerm *,Ball);
+
 // Mutexes
 LOCAL_INIT(struct swi_mutex *, Mutexes, NULL);
 
@@ -333,7 +327,7 @@ LOCAL(scratch_sys_struct_t, WorkerBuffer);
 // Thread Local Area for SWI-Prolog emulation routines.
 // stInitSruct LOCAL_INIT( PL_local_data*, PL_local_data_p,  Yap_InitThreadIO(wid));
 #ifdef THREADS
-LOCAL_INITF(struct thandle, ThreadHandle, InitThreadHandle(wid));
+LOCAL_INITF(struct  thandle, ThreadHandle, InitThreadHandle(wid));
 #endif /* THREADS */
 
 #if defined(YAPOR) || defined(TABLING)

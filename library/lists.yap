@@ -35,8 +35,6 @@
 	   same_length/2,
 	   select/3,
 	   selectchk/3,
-	   skip_list/3,
-	   skip_list/4,
 	   sublist/2,
 	   substitute/4,
 	   subtract/3,
@@ -47,6 +45,7 @@
 	   randomize/2
 	  ]).
 
+:- use_module(library(maplist)).
 
 /**  
  * @addtogroup lists List Predicates in the Prolog Library
@@ -82,9 +81,9 @@ to test for an element or to enumerate all the elements by backtracking.
 
 
 */
-member(X,[X|_]).
-member(X,[_|L]) :-
-       member(X,L).
+% member(X,[X|_]).
+% member(X,[_|L]) :-
+%        member(X,L).
 
 %% @pred  identical_member(?Element, ?Set) is nondet
 %
@@ -187,33 +186,35 @@ nextto(X,Y, [_|List]) :-
 
 /** @pred nth0(? _N_, ? _List_, ? _Elem_)
 
-
 True when  _Elem_ is the Nth member of  _List_,
 counting the first as element 0.  (That is, throw away the first
 N elements and unify  _Elem_ with the next.)  It can only be used to
 select a particular element given the list and index.  For that
-task it is more efficient than member/2
+task it is more efficient than member/2.
 
 
-%   nth0(?N, +List, ?Elem) is true when Elem is the Nth member of List,
+*/
+
+
+%%   @pred nth0(?N, +List, ?Elem)
+%is true when Elem is the Nth member of List,
 %   counting the first as element 0.  (That is, throw away the first
 %   N elements and unify Elem with the next.)  It can only be used to
 %   select a particular element given the list and index.  For that
 %   task it is more efficient than nmember.
 %   nth(+N, +List, ?Elem) is the same as nth0, except that it counts from
 %   1, that is nth(1, [H|_], H).
-*/
 nth0(V, In, Element) :- var(V), !,
 	generate_nth(0, V, In, Element).
 nth0(0, [Head|_], Head) :- !.
 nth0(N, [_|Tail], Elem) :-
-	M is N-1,
-	find_nth0(M, Tail, Elem).
+        M is N-1,
+         find_nth0(M, Tail, Elem).
 
 find_nth0(0, [Head|_], Head) :- !.
 find_nth0(N, [_|Tail], Elem) :-
-	M is N-1,
-	find_nth0(M, Tail, Elem).
+        M is N-1,
+        find_nth0(M, Tail, Elem).
 
 
 /** @pred nth1(+ _Index_,? _List_,? _Elem_)
@@ -224,44 +225,42 @@ Succeeds when the  _Index_-th element of  _List_ unifies with
 
 Set environment variable.   _Name_ and  _Value_ should be
 instantiated to atoms or integers.  The environment variable will be
-passed to `shell/[0-2]` and can be requested using `getenv/2`.
+passed to `shell/[0-2]` and can be requested using getenv/2.
 They also influence expand_file_name/2.
 
 
 */
 nth1(V, In, Element) :- var(V), !,
-	generate_nth(1, V, In, Element).
+        generate_nth(1, V, In, Element).
 nth1(1, [Head|_], Head) :- !.
 nth1(N, [_|Tail], Elem) :-
-	nonvar(N), !,
-	M is N-1,			% should be succ(M, N)
-	find_nth(M, Tail, Elem).
+        nonvar(N), !,
+        M is N-1,                       % should be succ(M, N)
+        find_nth(M, Tail, Elem).
 
 /** @pred nth(? _N_, ? _List_, ? _Elem_)
 
-
 The same as nth1/3.
-
 
 */
 nth(V, In, Element) :- var(V), !,
-	generate_nth(1, V, In, Element).
+        generate_nth(1, V, In, Element).
 nth(1, [Head|_], Head) :- !.
 nth(N, [_|Tail], Elem) :-
-	nonvar(N), !,
-	M is N-1,			% should be succ(M, N)
-	find_nth(M, Tail, Elem).
+        nonvar(N), !,
+        M is N-1,                       % should be succ(M, N)
+        find_nth(M, Tail, Elem).
 
 find_nth(1, [Head|_], Head) :- !.
 find_nth(N, [_|Tail], Elem) :-
-	M is N-1,
-	find_nth(M, Tail, Elem).
+        M is N-1,
+        find_nth(M, Tail, Elem).
 
 
 generate_nth(I, I, [Head|_], Head).
 generate_nth(I, IN, [_|List], El) :-
-	I1 is I+1,
-	generate_nth(I1, IN, List, El).
+        I1 is I+1,
+        generate_nth(I1, IN, List, El).
 
 
 /** @pred nth0(? _N_, ? _List_, ? _Elem_, ? _Rest_)
@@ -271,72 +270,67 @@ counting from 0, and  _Rest_ with the other elements.  It can be used
 to select the Nth element of  _List_ (yielding  _Elem_ and  _Rest_), or to
 insert  _Elem_ before the Nth (counting from 1) element of  _Rest_, when
 it yields  _List_, e.g. `nth0(2, List, c, [a,b,d,e])` unifies List with
-`[a,b,c,d,e]`.  `nth/4` is the same except that it counts from 1.  `nth0/4`
+`[a,b,c,d,e]`.  nth/4 is the same except that it counts from 1.  nth0/4
 can be used to insert  _Elem_ after the Nth element of  _Rest_.
-
-
-%   nth0(+N, ?List, ?Elem, ?Rest) unifies Elem with the Nth element of List,
-%   counting from 0, and Rest with the other elements.  It can be used
-%   to select the Nth element of List (yielding Elem and Rest), or to
-%   insert Elem before the Nth (counting from 1) element of Rest, when
-%   it yields List, e.g. nth0(2, List, c, [a,b,d,e]) unifies List with
-%   [a,b,c,d,e].  nth is the same except that it counts from 1.  nth
-%   can be used to insert Elem after the Nth element of Rest.
 */
 nth0(V, In, Element, Tail) :- var(V), !,
-	generate_nth(0, V, In, Element, Tail).
+        generate_nth(0, V, In, Element, Tail).
 nth0(0, [Head|Tail], Head, Tail) :- !.
 nth0(N, [Head|Tail], Elem, [Head|Rest]) :-
-	M is N-1,
-	nth0(M, Tail, Elem, Rest).
+        M is N-1,
+        nth0(M, Tail, Elem, Rest).
 
 find_nth0(0, [Head|Tail], Head, Tail) :- !.
 find_nth0(N, [Head|Tail], Elem, [Head|Rest]) :-
-	M is N-1,
-	find_nth0(M, Tail, Elem, Rest).
+        M is N-1,
+        find_nth0(M, Tail, Elem, Rest).
 
 
 /** @pred nth1(? _N_, ? _List_, ? _Elem_, ? _Rest_)
 
 Unifies  _Elem_ with the Nth element of  _List_, counting from 1,
-and  _Rest_ with the other elements.  It can be used to select the
-Nth element of  _List_ (yielding  _Elem_ and  _Rest_), or to
-insert  _Elem_ before the Nth (counting from 1) element of
- _Rest_, when it yields  _List_, e.g. `nth(3, List, c, [a,b,d,e])` unifies List with `[a,b,c,d,e]`.  `nth/4`
-can be used to insert  _Elem_ after the Nth element of  _Rest_.
+and  _Rest_ with the other elements.
 
+This procedure can be used to select the Nth element of _List_
+(yielding _Elem_ and _Rest_), or to insert _Elem_ before the Nth
+(counting from 1) element of _Rest_, when it yields _List_,
+e.g
+```.prolog
+7nth1(3, List, c, [a,b,d,e]) 
+```
 
+results in `_List_ = [a,b,c,d,e]`.
 */
 nth1(V, In, Element, Tail) :- var(V), !,
-	generate_nth(1, V, In, Element, Tail).
+        generate_nth(1, V, In, Element, Tail).
 nth1(1, [Head|Tail], Head, Tail) :- !.
 nth1(N, [Head|Tail], Elem, [Head|Rest]) :-
-	M is N-1,
-	nth1(M, Tail, Elem, Rest).
+        M is N-1,
+        nth1(M, Tail, Elem, Rest).
 
 /** @pred nth(? _N_, ? _List_, ? _Elem_, ? _Rest_)
 
-Same as `nth1/4`.
-
+Same as nth1/4. Unifies  _Elem_ with the Nth element of  _List_, counting from 1,
+and  _Rest_ with the other elements.
 
 */
 nth(V, In, Element, Tail) :- var(V), !,
-	generate_nth(1, V, In, Element, Tail).
+        generate_nth(1, V, In, Element, Tail).
 nth(1, [Head|Tail], Head, Tail) :- !.
 nth(N, [Head|Tail], Elem, [Head|Rest]) :-
-	M is N-1,
-	nth(M, Tail, Elem, Rest).
+        M is N-1,
+        nth(M, Tail, Elem, Rest).
 
 find_nth(1, [Head|Tail], Head, Tail) :- !.
 find_nth(N, [Head|Tail], Elem, [Head|Rest]) :-
-	M is N-1,
-	find_nth(M, Tail, Elem, Rest).
+        M is N-1,
+        find_nth(M, Tail, Elem, Rest).
 
 
 generate_nth(I, I, [Head|Tail], Head, Tail).
 generate_nth(I, IN, [E|List], El, [E|Tail]) :-
-	I1 is I+1,
-	generate_nth(I1, IN, List, El, Tail).
+        I1 is I+1,
+        generate_nth(I1, IN, List, El, Tail).
 
 
 
@@ -357,8 +351,8 @@ True when  _List_ and  _Perm_ are permutations of each other.
 %   N-element list is N!, even for a 7-element list that is 5040.
 */
 permutation([], []).
-permutation(List, [First|Perm]) :-	select(First, List, Rest),	%  tries each List element in turn
-	permutation(Rest, Perm).
+permutation(List, [First|Perm]) :-      select(First, List, Rest),      %  tries each List element in turn
+        permutation(Rest, Perm).
 
 
 % prefix(Part, Whole) iff Part is a leading substring of Whole
@@ -380,24 +374,24 @@ non-ground elements, the result may surprise you.
 */
 remove_duplicates([], []).
 remove_duplicates([Elem|L], [Elem|NL]) :-
-	delete(L, Elem, Temp),
-	remove_duplicates(Temp, NL).
+        delete(L, Elem, Temp),
+        remove_duplicates(Temp, NL).
 
 %%   remove_identical_duplicates(List, Pruned)
 %   removes duplicated elements from List.  
 remove_identical_duplicates([], []).
 remove_identical_duplicates([Elem|L], [Elem|NL]) :-
-	delete_identical(L, Elem, Temp),
-	remove_identical_duplicates(Temp, NL).
+        delete_identical(L, Elem, Temp),
+        remove_identical_duplicates(Temp, NL).
 
 
 delete_identical([],_, []).
 delete_identical([H|L],Elem,Temp)  :-
     H == Elem,
     !,
-	delete_identical(L, Elem, Temp).
+        delete_identical(L, Elem, Temp).
 delete_identical([H|L], Elem, [H|Temp]) :-
-	delete_identical(L, Elem, Temp).
+        delete_identical(L, Elem, Temp).
 
 
 
@@ -410,17 +404,10 @@ implied.
 Modes `same_length(-,+)` and `same_length(+,-)` generate either list given
 the other; mode `same_length(-,-)` generates two lists of the same length,
 in which case the arguments will be bound to lists of length 0, 1, 2, ...
-
-%   same_length(?List1, ?List2)
-%   is true when List1 and List2 are both lists and have the same number
-%   of elements.  No relation between the values of their elements is
-%   implied.
-%   Modes same_length(-,+) and same_length(+,-) generate either list given
-%   the other; mode same_length(-,-) generates two lists of the same length,
-%   in which case the arguments will be bound to lists of length 0, 1, 2, . */
+*/
 same_length([], []).
 same_length([_|List1], [_|List2]) :-
-	same_length(List1, List2).
+        same_length(List1, List2).
 
 
 /** @pred selectchk(? _Element_, ? _List_, ? _Residue_)
@@ -428,7 +415,7 @@ same_length([_|List1], [_|List2]) :-
 
 Semi-deterministic selection from a list. Steadfast: defines as
 
-```
+```.prolog
 selectchk(Elem, List, Residue) :-
         select(Elem, List, Rest0), !,
         Rest = Rest0.
@@ -449,38 +436,38 @@ stay in the same order).
 */
 select(Element, [Element|Rest], Rest).
 select(Element, [Head|Tail], [Head|Rest]) :-
-	select(Element, Tail, Rest).
+        select(Element, Tail, Rest).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%	sublist(?Sub, +List) is nondet.
+%%      sublist(?Sub, +List) is nondet.
 %
-%	True if all elements of Sub appear in List in the same order.
+%       True if all elements of Sub appear in List in the same order.
 %
 %   ALlo, both `append(_,Sublist,S)` and `append(S,_,List)` hold.
 sublist(L, L).
 sublist(Sub, [H|T]) :-
-	sublist1(T, H, Sub).
+        sublist1(T, H, Sub).
 
 sublist1(Sub, _, Sub).
 sublist1([H|T], _, Sub) :-
-	sublist1(T, H, Sub).
+        sublist1(T, H, Sub).
 sublist1([H|T], X, [X|Sub]) :-
-	sublist1(T, H, Sub).
+        sublist1(T, H, Sub).
 
 %   substitute(X, XList, Y, YList)
 %   is true when XList and YList only differ in that the elements X in XList
 %   are replaced by elements Y in the YList.
 substitute(X, XList, Y, YList) :-
-	substitute2(XList, X, Y, YList).
+        substitute2(XList, X, Y, YList).
 
 substitute2([], _, _, []).
 substitute2([X0|XList], X, Y, [Y|YList]) :-
-	X == X0, !,
-	substitute2(XList, X, Y, YList).
+        X == X0, !,
+        substitute2(XList, X, Y, YList).
 substitute2([X0|XList], X, Y, [X0|YList]) :-
-	substitute2(XList, X, Y, YList).
+        substitute2(XList, X, Y, YList).
 
 /** @pred suffix(? _Suffix_, ? _List_)
 
@@ -488,7 +475,7 @@ Holds when `append(_,Suffix,List)` holds.
 */
 suffix(Suffix, Suffix).
 suffix(Suffix, [_|List]) :-
-	suffix(Suffix,List).
+        suffix(Suffix,List).
 
 /** @pred sumlist(? _Numbers_, ? _Total_)
 
@@ -500,14 +487,14 @@ instead.
 
 */
 sumlist(Numbers, Total) :-
-	sumlist(Numbers, 0, Total).
+        sumlist(Numbers, 0, Total).
 
 /** @pred sum_list(? _Numbers_, + _SoFar_, ? _Total_)
 
 True when  _Numbers_ is a list of numbers, and  _Total_ is the sum of their total plus  _SoFar_.
 */
 sum_list(Numbers, SoFar, Total) :-
-	sumlist(Numbers, SoFar, Total).
+        sumlist(Numbers, SoFar, Total).
 
 /** @pred sum_list(? _Numbers_, ? _Total_)
 
@@ -515,12 +502,12 @@ sum_list(Numbers, SoFar, Total) :-
 True when  _Numbers_ is a list of numbers, and  _Total_ is their sum.
 */
 sum_list(Numbers, Total) :-
-	sumlist(Numbers, 0, Total).
+        sumlist(Numbers, 0, Total).
 
 sumlist([], Total, Total).
 sumlist([Head|Tail], Sofar, Total) :-
-	Next is Sofar+Head,
-	sumlist(Tail, Next, Total).
+        Next is Sofar+Head,
+        sumlist(Tail, Next, Total).
 
 
 /** @pred list_concat(+ _Lists_,? _List_)
@@ -536,12 +523,12 @@ concatenation of  _Lists_.
 */
 list_concat([], []).
 list_concat([H|T], L) :-
-	list_concat(H, L, Li),
-	list_concat(T, Li).
+        list_concat(H, L, Li),
+        list_concat(T, Li).
 
 list_concat([], L, L).
 list_concat([H|T], [H|Lf], Li) :-
-	list_concat(T, Lf, Li).
+        list_concat(T, Lf, Li).
 
 
 
@@ -558,6 +545,7 @@ L = [1,2,3,4,5,6,7,8] ? ;
 
 no
 ```
+
 */
 flatten(X,Y) :- flatten_list(X,Y,[]).
 
@@ -574,17 +562,17 @@ True when  _Numbers_ is a list of numbers, and  _Max_ is the maximum.
 
 */
 max_list([H|L],Max) :-
-	max_list(L,H,Max).
+        max_list(L,H,Max).
 
 max_list([],Max,Max).
 max_list([H|L],Max0,Max) :-
-	(
-	  H > Max0
-	->
-	  max_list(L,H,Max)
-	;
-	  max_list(L,Max0,Max)
-	).
+        (
+          H > Max0
+        ->
+          max_list(L,H,Max)
+        ;
+          max_list(L,Max0,Max)
+        ).
 
 /** @pred min_list(? _Numbers_, ? _Min_)
 
@@ -594,17 +582,17 @@ True when  _Numbers_ is a list of numbers, and  _Min_ is the minimum.
 
 */
 min_list([H|L],Max) :-
-	min_list(L,H,Max).
+        min_list(L,H,Max).
 
 min_list([],Max,Max).
 min_list([H|L],Max0,Max) :-
-	(
-	  H < Max0
-	->
-	  min_list(L, H, Max)
-	;
-	  min_list(L, Max0, Max)
-	).
+        (
+          H < Max0
+        ->
+          min_list(L, H, Max)
+        ;
+          min_list(L, Max0, Max)
+        ).
 
 /** @pred numlist(+ _Low_, + _High_, - _List_) is semidet.
 
@@ -635,8 +623,7 @@ numlist_(L, U, [L|Ns]) :-
 
 
 Succeeds if  _Set3_ unifies with the intersection of  _Set1_ and
- _Set2_.  _Set1_ and  _Set2_ are lists without duplicates. They
-need not be ordered.
+ _Set2_.  _Set1_ and  _Set2_ are lists without duplicates. Theyneed not be ordered.
 
 The code was copied from SWI-Prolog's list library.
 
@@ -688,9 +675,20 @@ close_list([]) :- !.
 close_list([_|T]) :-
 	close_list(T).
 
-/** randomize( +List, -RandomList).
+/** @pred randomize( +List, -RandomList).
 
-Create a "raandom" peermutation of a list. The initial list may have repeated
+Create a "random" peermutation of a list. The initial list may have repeated
 elements,
+*/
+randomize(List,RandomListPermutation) :-
+    add_random(List,RList),
+    msort(RList, SList),
+    add_random(RandomListPermutation,SList).
+
+add_random([],[]).
+add_random([H|L],[R-H|NL]) :-
+R is random,
+add_random(L,NL).
+
 
 /** @} */

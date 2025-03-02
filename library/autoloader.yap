@@ -30,8 +30,8 @@ scan_library_exports :-
 	scan_exports(F, library(S)),
 	fail
     ;
-    close(W)
-    ),
+    true
+    ).
 
 scan_exports(Library, CallName) :-
 	absolute_file_name(Library, Path,

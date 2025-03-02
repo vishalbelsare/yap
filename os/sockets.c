@@ -157,12 +157,13 @@ ConsoleSocketGetc(int sno)
 #endif
   LOCAL_PrologMode &= ~ConsoleGetcMode;
   if (count == 0) {
-    return console_post_process_eof(s);
+    Yap_EOF_Stream(s);
+    return  EOF;
   } else if (count > 0) {
     ch = c;
   } else {
     Yap_Error(SYSTEM_ERROR_INTERNAL, TermNil, "read");
-    return console_post_process_eof(s);
+    ch=-1;
   }
   return ch;
 }
@@ -231,12 +232,12 @@ int
 Yap_CheckIOStream(Term stream, char * error)
 {
   int sno = Yap_CheckStream(stream, Input_Stream_f|Output_Stream_f|Socket_Stream_f, error);
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return(sno);
 }
 
 Term
 Yap_InitSocketStream(int fd, socket_info flags, socket_domain domain) {
+  CACHE_REGS
   StreamDesc *st;
   int sno;
 
@@ -264,7 +265,6 @@ Yap_InitSocketStream(int fd, socket_info flags, socket_domain domain) {
   st->vfs = NULL;
   st->buf.on = false;
   Yap_DefaultStreamOps( st );
-  UNLOCK(st->streamlock);
   return(Yap_MkStream(sno));
 }
 
@@ -273,7 +273,6 @@ int
 Yap_CheckSocketStream(Term stream, const char * error)
 {
   int sno = Yap_CheckStream(stream, Socket_Stream_f, error);
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return sno;
 }
 
@@ -294,6 +293,7 @@ Yap_GetSocketStatus(int sno)
 /* update info on a socket, eg, new->server or new->client */
 void
 Yap_UpdateSocketStream(int sno, socket_info flags, socket_domain domain) {
+  CACHE_REGS
   StreamDesc *st;
 
   st = &GLOBAL_Stream[sno];

@@ -14,6 +14,10 @@
 * comments:	readutil library support				 *
 *									 *
 *************************************************************************/
+
+#include "Yap.h"
+#include "YapError.h"
+#include "YapTags.h"
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
@@ -25,6 +29,15 @@ static char SccsId[] = "%W% %G%";
 #include "YapEncoding.h"
 #include "iopreds.h"
 #include "yapio.h"
+#if HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+#if HAVE_FCNTL_H
+#include <fcntl.h>
+#endif
+#if HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
 /**
 * @defgroup readutil Reading Lines and Files
@@ -46,8 +59,8 @@ static Int rl_to_codes(Term TEnd, int do_as_binary, bool codes USES_REGS) {
     return false;
   status = GLOBAL_Stream[sno].status;
   binary_stream = GLOBAL_Stream[sno].status & Binary_Stream_f;
-  if (status & Eof_Stream_f) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
+  if (status & Past_Eof_Stream_f) {
+    UNLOCK(GLOBAL_Stream[sno]. streamlock);
     return Yap_unify_constant(ARG2, MkAtomTerm(AtomEof));
   }
           buf = Malloc(4096);
@@ -80,23 +93,18 @@ static Int rl_to_codes(Term TEnd, int do_as_binary, bool codes USES_REGS) {
     if (do_as_binary && !binary_stream)
       GLOBAL_Stream[sno].status &= ~Binary_Stream_f;
     if (sz == -1 || sz == 0) {
-      if (GLOBAL_Stream[sno].status & Eof_Stream_f) {
-        UNLOCK(GLOBAL_Stream[sno].streamlock);
+      if (GLOBAL_Stream[sno].status & Past_Eof_Stream_f) {
         return Yap_unify_constant(ARG2, MkAtomTerm(AtomEof));
       }
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
     }
-    if (GLOBAL_Stream[sno].status & Eof_Stream_f || buf[sz - 1] == 10) {
+    if (GLOBAL_Stream[sno].status & Past_Eof_Stream_f || buf[sz - 1] == 10) {
       /* we're done */
-      if (!(do_as_binary || GLOBAL_Stream[sno].status & Eof_Stream_f)) {
-        UNLOCK(GLOBAL_Stream[sno].streamlock);
+      if (!(do_as_binary || GLOBAL_Stream[sno].status & Past_Eof_Stream_f)) {
         /* handle CR before NL */
         if ((Int)sz - 2 >= 0 && buf[sz - 2] == 13)
           buf[sz - 2] = '\0';
         else
           buf[sz - 1] = '\0';
-      } else {
-        UNLOCK(GLOBAL_Stream[sno].streamlock);
       }
       if (codes)
       return Yap_unify(
@@ -109,7 +117,7 @@ static Int rl_to_codes(Term TEnd, int do_as_binary, bool codes USES_REGS) {
    }
 }
 /**
-   read_line_to_codes( +_Stream_, -_Codes_)
+   @pred read_line_to_codes( +_Stream_, -_Codes_)
 
    If _Stream_ is a readable text stream, unify _Codes_ with
    the sequence of character codes forming the first line of the stream.
@@ -118,7 +126,7 @@ static Int read_line_to_codes2(USES_REGS1) {
   return rl_to_codes(TermNil, FALSE, true PASS_REGS);
 }
 /**
-   read_line_to_chars( +_Stream_, -_Codes_)
+   @pred read_line_to_chars( +_Stream_, -_Codes_)
 
    If _Stream_ is a readable text stream, unify _Codes_ with
    the sequence of character atoms forming the first line of the stream.
@@ -129,7 +137,7 @@ static Int read_line_to_chars2(USES_REGS1) {
 
 
 /**
-   read_line_to_codes( +_Stream_, -_Codes_-_Tail_)
+   @pred read_line_to_codes( +_Stream_, -_Codes_-_Tail_)
 
    If _Stream_ is a readable text stream, unify _Codes_ with
    the sequence of character codes available from the first line.
@@ -141,7 +149,7 @@ static Int read_line_to_codes(USES_REGS1) {
 }
 
 /**
-   read_line_to_chars( +_Stream_, -_Codes_-_Tail_)
+  @pred read_line_to_chars( +_Stream_, -_Codes_-_Tail_)
 
    If _Stream_ is a readable text stream, unify _Codes_ with
    the sequence of characters available from the stream.
@@ -172,8 +180,7 @@ static Int read_line_to_string(USES_REGS1) {
   if (sno < 0)
     return false;
   status = GLOBAL_Stream[sno].status;
-  if (status & Eof_Stream_f) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
+  if (status & Past_Eof_Stream_f) {
     return Yap_unify_constant(ARG2, MkAtomTerm(AtomEof));
   }
   max_inp = (ASP - HR) / 2 - 1024;
@@ -204,26 +211,21 @@ static Int read_line_to_string(USES_REGS1) {
       sz = pt - buf;
     }
   if (sz == -1 || sz == 0) {
-    if (GLOBAL_Stream[sno].status & Eof_Stream_f) {
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
+    if (GLOBAL_Stream[sno].status & Past_Eof_Stream_f) {
       return Yap_unify_constant(ARG2, MkAtomTerm(AtomEof));
     }
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
     return false;
   }
-  if (GLOBAL_Stream[sno].status & Eof_Stream_f || buf[sz - 1] == 10) {
+  if (GLOBAL_Stream[sno].status & Past_Eof_Stream_f || buf[sz - 1] == 10) {
     /* we're done */
 
-    if (!(GLOBAL_Stream[sno].status & Eof_Stream_f)) {
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
+    if (!(GLOBAL_Stream[sno].status & Past_Eof_Stream_f)) {
       /* handle CR before NL */
       if ((Int)sz - 2 >= 0 && buf[sz - 2] == 13)
         buf[sz - 2] = '\0';
       else {
         buf[sz - 1] = '\0';
       }
-    } else {
-      UNLOCK(GLOBAL_Stream[sno].streamlock);
     }
   }
   if (GLOBAL_Stream[sno].encoding == ENC_ISO_UTF8) {
@@ -237,7 +239,6 @@ static Int read_line_to_string(USES_REGS1) {
   buf += (buf_sz - 1);
   max_inp -= (buf_sz - 1);
   if (max_inp <= 0) {
-    UNLOCK(GLOBAL_Stream[sno].streamlock);
     Yap_Error(RESOURCE_ERROR_STACK, ARG1, NULL);
     return FALSE;
   }
@@ -259,7 +260,7 @@ static Int read_stream_to_codes(USES_REGS1) {
 
   if (sno < 0)
     return FALSE;
-  while (!(GLOBAL_Stream[sno].status & Eof_Stream_f)) {
+  while (!(GLOBAL_Stream[sno].status & Past_Eof_Stream_f)) {
     /* skip errors */
     Int ch = GLOBAL_Stream[sno].stream_getc(sno);
     Term t;
@@ -285,12 +286,52 @@ static Int read_stream_to_codes(USES_REGS1) {
     }
     Yap_CloseSlots(st);
   }
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   if (HR == HBASE)
     return Yap_unify(ARG2, ARG3);
   RESET_VARIABLE(HR - 1);
   Yap_unify(HR[-1], ARG3);
   return Yap_unify(AbsPair(HBASE), ARG2);
+}
+
+/**
+   @pred read_stream_to_string( +_Stream_, -Codes)
+
+   If _Stream_ is a readable text stream, unify _String_ with
+   the contents of the stream.
+
+     If the stream is exhausted, unify _Codes_ with `end_of_file`.
+ */
+static Int read_stream_to_string(USES_REGS1) {
+  int sno = Yap_CheckStream(ARG1, Input_Stream_f,
+                            "reaMkAtomTerm (AtomEofd_line_to_codes/2");
+ size_t sz=4096;
+  char *buf =malloc(sz), *b = buf;
+
+  Term t;
+  if (sno < 0)
+    return false;
+  while (!(GLOBAL_Stream[sno].status & Past_Eof_Stream_f)) {
+    Int ch = GLOBAL_Stream[sno].stream_getc(sno);
+    if (ch == EOF)
+      break;
+    *b++ = ch;
+    if (b-buf==sz-1) {
+       size_t n=b-buf;
+      sz+=4096;
+      buf = realloc(buf,sz);
+      b=buf+n;
+            /* build a legal term again */
+  }
+  }
+    b[0]='\0';
+    while (HR > ASP - (sz/sizeof(CELL)+4096)) {
+     if (!Yap_dogc(PASS_REGS1)) {
+        Yap_Error(RESOURCE_ERROR_STACK, ARG1, "read_stream_to_codes/3");
+        return false;
+     }
+    }
+    t = MkStringTerm(buf);
+    return Yap_unify(t, ARG2);
 }
 
 
@@ -302,6 +343,7 @@ static Int read_stream_to_codes(USES_REGS1) {
 
      If the stream is exhausted, unify _Codes_ with `end_of_file`.
  */
+
 static Int read_stream_to_terms(USES_REGS1) {
   int sno = Yap_CheckStream(ARG1, Input_Stream_f, "read_line_to_codes/2");
   Term t, r;
@@ -314,16 +356,15 @@ static Int read_stream_to_terms(USES_REGS1) {
  Term td = TermDec10;
  Term opts =  MkPairTerm(Yap_MkApplTerm(FunctorSyntaxErrors,1,&td),TermNil);
   hdl = Yap_InitSlot(ARG2);
-  while (!(GLOBAL_Stream[sno].status & Eof_Stream_f)) {
+  while (!(GLOBAL_Stream[sno].status & Past_Eof_Stream_f)) {
     r = Yap_read_term(sno, opts, 2);
       ;
-      Yap_DebugPlWriteln(r);
+      //      Yap_DebugPlWriteln(r);
     // just ignore failure
       t = Deref(Yap_GetFromHandle(hdl));
     if (Deref(r) == TermEOfCode) {
       break;
-    } else {
-      
+    } else {    
       if (IsVarTerm(t)) {
 	Yap_unify(t, Yap_MkNewPairTerm());
 	t = Deref(t);
@@ -332,18 +373,60 @@ static Int read_stream_to_terms(USES_REGS1) {
       Term h = HeadOfTerm(t);
 	if (!Yap_unify(h,r))
 	    return false;
-          Yap_DebugPlWriteln(t);
+	//          Yap_DebugPlWriteln(t);
   Yap_PutInHandle(hdl,TailOfTerm(t));
     }
   }
-  UNLOCK(GLOBAL_Stream[sno].streamlock);
   return Yap_unify( Yap_GetFromHandle(hdl), Yap_GetFromHandle(hd3));
 }
+
+
+/**
+   @pred read_file_to_string( +_Stream_, -Codes)
+
+   If _Stream_ is a file text stream, unify _String_ with
+   the contents of the stream.
+
+ */
+static Int read_file_to_string(USES_REGS1) {
+ char *s;
+ must_be_atom(Deref(ARG1));
+  s  = RepAtom(AtomOfTerm(Deref(ARG1)))->StrOfAE;
+ 
+  int fildes  = open(s,O_RDONLY);
+  if (fildes<0) {
+    Yap_ThrowError(SYSTEM_ERROR_OPERATING_SYSTEM, ARG1, "error %s while opening %s", strerror(errno), s);
+  }
+  struct stat buf;
+  if (fstat(fildes, &buf) < 0) {
+    Yap_ThrowError(SYSTEM_ERROR_OPERATING_SYSTEM, ARG1, "error %s while opening %s", strerror(errno), s); 
+}
+  size_t sz = buf.st_size;
+  while (HR > ASP - (sz/sizeof(CELL)+4096)) {
+     if (!Yap_dogc(PASS_REGS1)) {
+        Yap_Error(RESOURCE_ERROR_STACK, ARG1, "read_stream_to_codes/3");
+        return false;
+      }
+    }
+  Term t = MkStringTerm("");
+  if (sz) {
+    s = (char*)StringOfTerm(t);
+    if (read(fildes,s, sz) < 0) {
+      Yap_ThrowError(SYSTEM_ERROR_OPERATING_SYSTEM, ARG1, "error %s while opening %s", strerror(errno), s); 
+    }
+    s[sz]='\0';
+  }
+    return Yap_unify(ARG2,t);
+}
+
+
+
 
 void Yap_InitReadUtil(void) {
   CACHE_REGS
 
-  Term cm = CurrentModule;
+
+    Term cm = CurrentModule;
   CurrentModule = READUTIL_MODULE;
   Yap_InitCPred("read_line_to_string", 2, read_line_to_string, SyncPredFlag);
   Yap_InitCPred("read_line_to_codes", 3, read_line_to_codes, SyncPredFlag);
@@ -352,7 +435,10 @@ void Yap_InitReadUtil(void) {
   Yap_InitCPred("read_line_to_chars", 2, read_line_to_chars2, SyncPredFlag);
   Yap_InitCPred("read_stream_to_codes", 3, read_stream_to_codes, SyncPredFlag);
   Yap_InitCPred("read_stream_to_terms", 3, read_stream_to_terms, SyncPredFlag);
+  Yap_InitCPred("read_file_to_string", 2, read_file_to_string, SyncPredFlag);
+  Yap_InitCPred("read_stream_to_string", 2, read_stream_to_string, SyncPredFlag);
   CurrentModule = cm;
 }
 
 /// @}
+  

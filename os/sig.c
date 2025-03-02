@@ -1,3 +1,33 @@
+/*************************************************************************
+ *									 *
+ *	 YAP Prolog 							 *
+ *									 *
+ *	Yap Prolog was developed at NCCUP - Universidade do Porto	 *                 
+ *									 *
+ * Copyright L.Damas, V.S.Costa and Universidade do Porto 1985-1997	 *
+ *									 *
+ **************************************************************************
+ *									 *
+ * File:		sig.c						 *
+ * Last rev:	4/03/88							 *
+ * mods: *
+ * comments:	Signal Processing			 *
+ *									 *
+ *************************************************************************/
+
+/**
+ * @file sig.c
+ * @brief Signal Processing in YAP
+ *
+ */
+
+
+/**
+ * @defgroup YAPOsSignals Unix Signal Handling
+ * @ingroup InputOutput
+ * @brief YAP interface to Unix style signals.
+ * @{
+ */
 
 #include "sysbits.h"
 
@@ -223,6 +253,7 @@ HandleSIGSEGV(int sig, void *sipv, void *uap) {
   sure = TRUE;
 #endif
   SearchForTrailFault(ptr, sure);
+  
 }
 #endif /* SIGSEGV */
 
@@ -301,7 +332,8 @@ bool Yap_set_fpu_exceptions(Term flag) {
 
 static void ReceiveSignal(int s, void *x, void *y) {
   CACHE_REGS
-  LOCAL_PrologMode |= InterruptMode;
+    Yap_DisableInterrupts(worker_id);
+    LOCAL_PrologMode |= InterruptMode;
 #if !defined(LIGHT) && !_MSC_VER && !defined(__MINGW32__)
 
   if (s == SIGINT && (LOCAL_PrologMode & ConsoleGetcMode)) {
@@ -310,16 +342,17 @@ static void ReceiveSignal(int s, void *x, void *y) {
 #if !NOT_SIGACTION
     my_signal(s, ReceiveSignal);
 #endif
+    Yap_EnableInterrupts(worker_id);
   switch (s) {
   case SIGINT:
     // always direct SIGINT to console
     Yap_external_signal(worker_id, YAP_INT_SIGNAL);
     break;
   case SIGALRM:
-    Yap_external_signal(worker_id, YAP_ALARM_SIGNAL);
+     Yap_external_signal(worker_id, YAP_ALARM_SIGNAL);
     break;
   case SIGVTALRM:
-    Yap_external_signal(worker_id, YAP_VTALARM_SIGNAL);
+     Yap_external_signal(worker_id, YAP_VTALARM_SIGNAL);
     break;
 #ifndef MPW
 #ifdef HAVE_SIGFPE
@@ -365,7 +398,6 @@ static void ReceiveSignal(int s, void *x, void *y) {
     exit(s);
   }
 #endif
-  LOCAL_PrologMode &= ~InterruptMode;
 }
 
 #if (_MSC_VER || defined(__MINGW32__))
@@ -379,6 +411,7 @@ static BOOL WINAPI MSCHandleSignal(DWORD dwCtrlType) {
           ) {
     return FALSE;
   }
+  Yap_DisableInterrupts();
   switch (dwCtrlType) {
   case CTRL_C_EVENT:
   case CTRL_BREAK_EVENT:
@@ -389,6 +422,7 @@ static BOOL WINAPI MSCHandleSignal(DWORD dwCtrlType) {
     Yap_signal(YAP_WINTIMER_SIGNAL);
     LOCAL_PrologMode |= InterruptMode;
 #endif
+  Yap_EnableInterrupts(worker_id);
     return (TRUE);
   default:
     return (FALSE);
@@ -426,24 +460,15 @@ static DWORD WINAPI DoTimerThread(LPVOID targ) {
 
 #endif
 
-static Int enable_interrupts(USES_REGS1) {
-  LOCAL_InterruptsDisabled--;
-  if (LOCAL_Signals && !LOCAL_InterruptsDisabled) {
-    CreepFlag = Unsigned(LCL0);
-    if (!Yap_only_has_signal(YAP_CREEP_SIGNAL))
-      EventFlag = Unsigned(LCL0);
-  }
-  return TRUE;
-}
 
-static Int disable_interrupts(USES_REGS1) {
-  LOCAL_InterruptsDisabled++;
-  CalculateStackGap(PASS_REGS1);
-  return TRUE;
-}
-
-
-
+/**
+ * @pred alarm(Secs, USecs, OldSecs, OldUSecs)
+ *
+ * If Secs or Msecs are greater than 0, ask the Operating system to interrupt YAP in the next Secs seconds, USsecs nicrosecds. If an alarm was active, Unify the
+ * last two arguments with the time left.
+ *
+ * Time is wall-time, so precision may vary.
+*/
 static Int alarm4(USES_REGS1) {
   Term t = Deref(ARG1);
   Term t2 = Deref(ARG2);
@@ -466,6 +491,7 @@ static Int alarm4(USES_REGS1) {
   }
   i1 = IntegerOfTerm(t);
   i2 = IntegerOfTerm(t2);
+  Yap_DisableInterrupts(worker_id);
   if (i1 == 0 && i2 == 0) {  
 #if _WIN32
     Yap_get_signal(YAP_WINTIMER_SIGNAL);
@@ -511,6 +537,7 @@ static Int alarm4(USES_REGS1) {
     //    Yap_do_low_level_trace=1;
 
     if (setitimer(ITIMER_REAL, &new, &old) < 0) {
+      Yap_EnableInterrupts(worker_id);
 #if HAVE_STRERROR
       Yap_Error(SYSTEM_ERROR_OPERATING_SYSTEM, ARG1, "setitimer: %s",
                 strerror(errno));
@@ -519,7 +546,8 @@ static Int alarm4(USES_REGS1) {
 #endif
       return FALSE;
     }
-    return Yap_unify(ARG3, MkIntegerTerm(old.it_value.tv_sec)) &&
+  Yap_EnableInterrupts(worker_id);
+  return Yap_unify(ARG3, MkIntegerTerm(old.it_value.tv_sec)) &&
            Yap_unify(ARG4, MkIntegerTerm(old.it_value.tv_usec));
   }
 #elif HAVE_ALARM && !SUPPORT_CONDOR
@@ -529,10 +557,12 @@ static Int alarm4(USES_REGS1) {
 
     left = alarm(i1);
     tout = MkIntegerTerm(left);
+    Yap_EnableInterrupts(worker_id);
     return Yap_unify(ARG3, tout) && Yap_unify(ARG4, MkIntTerm(0));
   }
 #else
   /* not actually trying to set the alarm */
+  Yap_EnableInterrupts(worker_id);
   if (IntegerOfTerm(t) == 0)
     return TRUE;
   Yap_Error(SYSTEM_ERROR_INTERNAL, TermNil,
@@ -541,6 +571,13 @@ static Int alarm4(USES_REGS1) {
 #endif
 }
 
+/**
+ * @pred virtual_alarm(Secs, USecs, OldSecs, OldUSecs)
+ *
+ * If Secs or Msecs are greater than 0, ask the Operating system to interrupt YAP in the next  user-time Secs seconds, USsecs nicrosecds.
+ *
+ * Time is wall-time, so precision may vary.
+*/
 static Int virtual_alarm(USES_REGS1) {
   Term t = Deref(ARG1);
   Term t2 = Deref(ARG2);
@@ -591,11 +628,13 @@ static Int virtual_alarm(USES_REGS1) {
   {
     struct itimerval new, old;
 
+  Yap_DisableInterrupts(worker_id);
     new.it_interval.tv_sec = 0;
     new.it_interval.tv_usec = 0;
     new.it_value.tv_sec = IntegerOfTerm(t);
     new.it_value.tv_usec = IntegerOfTerm(t2);
     if (setitimer(ITIMER_VIRTUAL, &new, &old) < 0) {
+  Yap_EnableInterrupts(worker_id);
 #if HAVE_STRERROR
       Yap_Error(SYSTEM_ERROR_OPERATING_SYSTEM, ARG1, "setitimer: %s",
                 strerror(errno));
@@ -604,6 +643,7 @@ static Int virtual_alarm(USES_REGS1) {
 #endif
       return FALSE;
     }
+  Yap_EnableInterrupts(worker_id);
     return Yap_unify(ARG3, MkIntegerTerm(old.it_value.tv_sec)) &&
            Yap_unify(ARG4, MkIntegerTerm(old.it_value.tv_usec));
   }
@@ -884,6 +924,16 @@ void Yap_InitOSSignals(int wid) {
 #endif
 }
 
+static Int enable_interrupts(USES_REGS1)
+{
+return    Yap_EnableInterrupts(worker_id);
+}
+
+static Int disable_interrupts(USES_REGS1)
+{
+return    Yap_DisableInterrupts(worker_id);
+}
+
 
 /**
  * @brief Initialize internal interface predicates
@@ -892,11 +942,13 @@ void Yap_InitSignalPreds(void) {
   CACHE_REGS
   Term cm = CurrentModule;
   Yap_InitCPred("alarm", 4, alarm4,   SyncPredFlag);
-  Yap_InitCPred("virtual_alarm", 4, virtual_alarm, SyncPredFlag);
   CurrentModule = HACKS_MODULE;
+  Yap_InitCPred("virtual_alarm", 4, virtual_alarm, SyncPredFlag);
   Yap_InitCPred("enable_interrupts", 0, enable_interrupts, SafePredFlag);
   Yap_InitCPred("disable_interrupts", 0, disable_interrupts, SafePredFlag);
   my_signal_info(SIGSEGV, HandleSIGSEGV);
   CurrentModule = cm;
   Yap_set_fpu_exceptions(TermFalse);
 }
+
+/// @}

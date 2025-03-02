@@ -566,6 +566,7 @@ static Int variables_in_term(USES_REGS1) /* variables in term t		 */
 {
 
   Term  t, out;
+
   t = Deref(ARG1);
   if (IsVarTerm(t)) {
     out = MkPairTerm(MkGlobal(t),TermNil);
@@ -579,7 +580,7 @@ static Int variables_in_term(USES_REGS1) /* variables in term t		 */
     return Yap_unify(out,ARG2);
   }
 
-/** @pred  term_variables(? _Term_, - _Variables_, +_ExternalVars_) is iso
+/** @pred  term_varibales(? _Term_, - _Variables_, +_ExternalVars_) is iso
 
     Unify the difference list between _Variables_ and _ExternaVars_
     with the list of all variables of term _Term_.  The variables
@@ -755,6 +756,7 @@ Term Yap_TermVariables(Term t, Term t0 USES_REGS) /* variables in term t  */
   return out;
 }
 
+#if 0
 /** @pred  term_variables(? _Term_, - _Variables_) is iso
 
     Unify  _Variables_ with the list of all variables of term
@@ -762,7 +764,8 @@ Term Yap_TermVariables(Term t, Term t0 USES_REGS) /* variables in term t  */
     appearance when traversing the term depth-first, left-to-right.
 
 */
-static Int term_variables(USES_REGS1) /* variables in term t		 */
+static Int  term_variables(USES_REGS1) /* variables in term t
+				       */
 {
   if (!Yap_IsListOrPartialListTerm(Deref(ARG2))) {
     Yap_ThrowError(TYPE_ERROR_LIST, ARG2, "term_variables/2");
@@ -781,7 +784,8 @@ static Int term_variables(USES_REGS1) /* variables in term t		 */
   return Yap_unify(out,ARG2);
     
 }
-
+#endif	       
+  
 /** routine to locate attributed variables */
 
 typedef struct att_rec {
@@ -794,7 +798,7 @@ typedef struct att_rec {
     _Term_ that do not occur in _CurrentVariables_. That is:
 
     `Variables = vars(Term) - CurrentVariables`
-=
+    
     The variables occur in
 the order of their first appearance when traversing the term depth-first,
 left-to-right.
@@ -808,7 +812,8 @@ p_new_variables_in_term(USES_REGS1) /* variables within term t		 */
   ARG2 = ARG1;
   ARG1 = t;
   return term_variables_difference(PASS_REGS1);
-    }
+
+}
 
 static Int
 free_variables_in_term(USES_REGS1) /* variables within term t		 */
@@ -1023,7 +1028,7 @@ static Int term_attterms(USES_REGS1)
   {			\
 INC_H(2,ts);\
 ts[0] = (CELL)fvar;			\
-if ( handle_singles){				\
+ if ( handle_singles){	\
     ts[1] = TermUnderscore;			\
 } \
  else if (prefix) {				\
@@ -1268,23 +1273,20 @@ static Int varnumbers(USES_REGS1) /* variables in term t		 */
 }
 
 void Yap_InitTermCPreds(void) {
-  CACHE_REGS
-    Yap_InitCPred("cyclic_term", 1, cyclic_term, TestPredFlag);
+      Yap_InitCPred("cyclic_term", 1, cyclic_term, TestPredFlag);
 
     Yap_InitCPred("ground", 1, ground, TestPredFlag);
-    Yap_InitCPred("non_ground", 2, ground, 0);
+    Yap_InitCPred("non_ground", 2, non_ground, 0);
     Yap_InitCPred("numbervars", 3, numbervars, 0);
     Yap_InitCPred("$singleton_vs_numbervars", 3, singleton_vs_numbervars, 0);
     Yap_InitCPred("$varnumbers", 2, varnumbers, 0);
-    CurrentModule = TERMS_MODULE;
-    Yap_InitCPred("non_ground", 1, non_ground, 0);
-    Yap_InitCPred("variable_in_term", 2, var_in_term, 0);
-    Yap_InitCPred("new_variables_in_term", 3, p_new_variables_in_term, 0);
-    Yap_InitCPred("variables_in_both_terms", 3,term_variables_intersection, 0);
-    CurrentModule = PROLOG_MODULE;
+    Yap_InitCPredInModule("non_ground", 1, non_ground, 0, TERMS_MODULE);
+    Yap_InitCPredInModule("variable_in_term", 2, var_in_term, 0, TERMS_MODULE);
+    Yap_InitCPredInModule("new_variables_in_term", 3, p_new_variables_in_term, 0, TERMS_MODULE);
+    Yap_InitCPredInModule("variables_in_both_terms", 3,term_variables_intersection, 0, TERMS_MODULE);
     Yap_InitCPred("unnumbervars", 1, unnumbervars, 0);
 #if 1
-    Yap_InitCPred("term_variables", 2, term_variables, 0);
+    Yap_InitCPred("term_variables", 2, variables_in_term, 0);
     Yap_InitCPred("term_variables", 3, term_variables3, 0);
     Yap_InitCPred("term_variable_occurrences", 2, term_variable_occurrences, 0);
     Yap_InitCPred("term_variable_occurrences", 3, term_variable_occurrences3, 0);

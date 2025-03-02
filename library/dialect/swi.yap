@@ -11,8 +11,8 @@
 
 /**
 
-@defgroup YAP_System SWI Dialect Support
-@ingroup YAP_SWI
+@defgroup YAP_SWI SWI Dialect Support
+@ingroup YAPProgramming
 
 @{
 
@@ -126,11 +126,11 @@ allowing for variables in the list.
 
 :- style_check(all).
 
-:- yap_flag(unknown,error).
+:- set_prolog_flag(unknown,error).
 
-:- yap_flag(open_expands_filename,false).
+:- set_prolog_flag(open_expands_filename,false).
 
-:- yap_flag(autoload,true).
+:- set_prolog_flag(autoload,true).
 
 :- set_prolog_flag(user_flags,silent).
 
@@ -301,6 +301,13 @@ flag(Key, 0, New) :-
 current_flag(Key) :-
 	flag(Key).
 
+'$declare_module'( Name, Class, Context, File, Line, _AllowFile ) :-
+	Name \= Context,
+	!,
+	set_module_property( Name, base(Context) ),
+	set_module_property( Name, class(Class) ),
+	set_module_property( Name, exports([], File, Line) ).
+'$declare_module'( Name, _Class, Name, _File, _Line, _AllowFile ).
 require(F) :-
 	must_be_list(F),
 	% notice that this must be used as a declaration.

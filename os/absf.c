@@ -11,7 +11,7 @@
  * File:		iopreds.c *
  * Last rev:	5/2/88							 *
  * mods: *
- * comments:	Input/Output C implemented predicates			 *
+ * comments:	Absolute and Relative File Systems Paths		 *
  *									 *
  *************************************************************************/
 #ifdef SCCS
@@ -20,6 +20,9 @@ static char SccsId[] = "%W% %G%";
 
 #include "Yap.h"
 #include "YapFlags.h"
+
+#include "YapText.h"
+
 #include "yapio.h"
 #include "sysbits.h"
 
@@ -29,9 +32,21 @@ static char SccsId[] = "%W% %G%";
  * @file   absf.c
  * @author VITOR SANTOS COSTA <vsc@VITORs-MBP.lan>
  * @date   Wed Jan 20 00:45:56 2016
+ * @brief  c-code for absolute file name and friends.
  *
- * @brief  absolute file name: C ut in a different light.
- lo *
+ */
+
+/**
+ *
+ * @defgroup absf C-code fior absolute and relative paths.
+ * @addtogroup absf
+ *
+ * @brief C-code support for dealing with absolute and relative paths.
+ *
+ * This code provides the necessary built-ins to open, close and move around
+ * Linux, Unix, and OSX filesystems. It should also work in WIN32.
+ *
+ * @{
  */
 
 static Term do_glob(const char *spec, bool glob_vs_wordexp);
@@ -49,8 +64,8 @@ static Term gethdir(Term t) {
         return false;
     }
     if (TermDot == t) {
-        return 
-	  MkAtomTerm(Yap_LookupAtom(Yap_getcwd(buf,
+        return
+          MkAtomTerm(Yap_LookupAtom(Yap_getcwd(buf,
 PATH_MAX - 1)));
     }
     nsz = strlen(s);
@@ -90,8 +105,7 @@ static Term is_file_errors(Term t) {
         return TermZERO;
     }
     if (IsAtomTerm(t)) {
-        Yap_ThrowError(DOMAIN_ERROR_FILE_ERRORS, t, "file_error in {fail,error}.");
-        return TermZERO;
+        Yap_ThrowError(DOMAIN_ERROR_FILE_ERRORS, t, "file_error in 1{fail,error}."); return TermZERO;
     }
     Yap_ThrowError(TYPE_ERROR_ATOM, t, "file_error in {fail,error}.");
     return TermZERO;
@@ -113,8 +127,8 @@ static Term is_file_type(Term t) {
               "file_type in {txt,prolog,exe,directory...}");
     return TermZERO;
   }
-  Yap_ThrowError(TYPE_ERROR_ATOM, t, "file_type in {txt,prolog,exe,directory...}");
-  return TermZERO;
+  Yap_ThrowError(TYPE_ERROR_ATOM, t, "file_type in in {txt,prolog,exe,directory...}");
+  	   return TermZERO;
 }
 
 
@@ -122,11 +136,14 @@ static Term is_file_type(Term t) {
   int lvl = push_text_stack();
   char *o = Malloc(FILENAME_MAX+1), *wd = Malloc(FILENAME_MAX+1);
   const char *cwd =  Yap_getcwd(wd, FILENAME_MAX);
+  if (!cwd || cwd[0] == '\0') {
+    Yap_ThrowError(SYSTEM_ERROR_OPERATING_SYSTEM,TermNil,"could not find working directory");
+  }
  size_t sz = cwk_path_get_absolute(
-				  cwd, path,
-				     o,
-			 FILENAME_MAX
-			 );
+                                  cwd, path,
+                                     o,
+                         FILENAME_MAX
+                         );
   if (sz <0)
     return NULL;
 return pop_output_text_stack(lvl,o);
@@ -181,8 +198,16 @@ char s[257];
   return pop_output_text_stack(lvl, rc);
 }
 
+/* Expand globs in a path.
+
+   Globs examples:
+   - `[a-z]*` returns all paths that start with a lower-case character;
+   - `a[^b]+`. returns all paths that do not start with a `b`
+   - `returns the name of  all hidden files in the currrent ddirectory.
+     `.?.?.?*`
+
+*/
 static Term
-/* Expand the string for the program to run.  */
 do_glob(const char *spec, bool glob_vs_wordexp) {
   CACHE_REGS
   if (spec == NULL) {
@@ -195,10 +220,10 @@ do_glob(const char *spec, bool glob_vs_wordexp) {
     HANDLE hFind;
     CELL *dest;
     Term tf;
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
+    char drive[_MAX_DRIVE+1];
+    char dir[_MAX_DIR+1];
+    char fname[_MAX_FNAME+1];
+    char ext[_MAX_EXT+1];
 
     _splitpath(spec, drive, dir, fname, ext);
     _makepath(u, drive, dir, fname, ext);
@@ -208,6 +233,14 @@ do_glob(const char *spec, bool glob_vs_wordexp) {
     if (hFind == INVALID_HANDLE_VALUE) {
       return TermNil;
     } else {
+      if (ASP-HR < 1024) {
+	FindClose(hFind);
+	if (!Yap_dogc(PASS_REGS1)) {
+	  Yap_Error(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
+	  return false;
+	}
+          hFind = FindFirstFile(u, &find);
+}
       tf = AbsPair(HR);
       _makepath(u, drive, dir, find.cFileName, NULL);
       HR[0] = MkAtomTerm(Yap_LookupAtom(u));
@@ -246,11 +279,11 @@ do_glob(const char *spec, bool glob_vs_wordexp) {
 #endif
   if (glob_vs_wordexp) {
 #if HAVE_GLOB
-#ifdef GLOB_NOCHECK
-    flags = GLOB_NOCHECK;
-#else
-    flags = 0;
-#endif
+// #ifdef GLOB_NOCHECK
+//     flags = GLOB_NOCHECK;
+// #else
+//     flags = 0;
+// #endif
 #ifdef GLOB_BRACE
     flags |= GLOB_BRACE | GLOB_TILDE;
 #endif
@@ -291,10 +324,8 @@ do_glob(const char *spec, bool glob_vs_wordexp) {
       if (pathcount) {
         break;
       } else {
-        Term t;
-        t = MkAtomTerm(Yap_LookupAtom(espec));
         wordfree(&wresult);
-        return MkPairTerm(t, TermNil);
+        return  TermNil;
       }
     case WRDE_NOSPACE:
       /* If the error was WRDE_NOSPACE,
@@ -314,6 +345,14 @@ do_glob(const char *spec, bool glob_vs_wordexp) {
   const char *tmp;
   Term tf = TermNil;
   for (j = 0; j < pathcount; j++) {
+    if (ASP-HR<1024) {
+      if (!Yap_dogc(PASS_REGS1)) {
+	Yap_Error(RESOURCE_ERROR_STACK, TermNil, LOCAL_ErrorMessage);
+	return false;
+      }
+      j = 0;
+      continue;
+    }
     const char *s = ss[pathcount - (j + 1)];
     tmp = s;
     // if (!exists(s))
@@ -454,7 +493,7 @@ static const char *PlExpandVars(const char *source, const char *root) {
 /**
   @pred absolute_file_name(+Name:atom,+Path:atom) is nondet
 
-  Converts the given file specification into an absolute path, using default options. See absolute_file_name/3 for details on the options.
+  Converts the given file specification into an absolute path, using default options. Please, see absolute_file_name/3 for details on the options.
 */
 static Int real_path(USES_REGS1) {
   Term t1 = Deref(ARG1);
@@ -520,15 +559,19 @@ bool Yap_IsAbsolutePath(const char *p0, bool expand) {
 #if _WIN32 || __MINGW32__
     nrc = !PathIsRelative(p);
 #else
-    nrc = (p[0] == '/');
+    nrc = (p && p[0] == '/');
 #endif
     return nrc;
 }
 
  
 
+/**
+   @pred true_file_name(A,B)
 
-static Int true_file_name(USES_REGS1) {
+   @brief Unify _B_ with the absolute path to _A_.
+*/
+   static Int true_file_name(USES_REGS1) {
     Term t = Deref(ARG1);
     const char *s;
 
@@ -746,7 +789,6 @@ static Int access_path(USES_REGS1) {
           if ((vfs = vfs_owner(s))) {
               vfs_stat st;
               bool rc = vfs->stat(vfs, s, &st);
-              UNLOCK(GLOBAL_Stream[sno].streamlock);
               return rc;
           }
 #if HAVE_STAT
@@ -966,7 +1008,7 @@ static Int abs_file_parameters(USES_REGS1) {
   if (args[ABSOLUTE_FILE_NAME_EXPAND].used)
     t[ABSOLUTE_FILE_NAME_EXPAND] = args[ABSOLUTE_FILE_NAME_EXPAND].tvalue;
   else
-    t[ABSOLUTE_FILE_NAME_EXPAND] =getAtomicLocalPrologFlag(EXPAND_FILE_NAME_FLAG) ;
+    t[ABSOLUTE_FILE_NAME_EXPAND] =getAtomicLocalPrologFlag(OPEN_EXPANDS_FILENAME_FLAG) ;
   if (args[ABSOLUTE_FILE_NAME_GLOB].used) {
     t[ABSOLUTE_FILE_NAME_GLOB] = args[ABSOLUTE_FILE_NAME_GLOB].tvalue;
     t[ABSOLUTE_FILE_NAME_EXPAND] = TermTrue;
@@ -996,12 +1038,129 @@ static Int get_abs_file_parameter(USES_REGS1) {
 }
 
 
+static Int is_absolute_file_name(USES_REGS1) { /* file_base_name(Stream,N) */
+  Term t = Deref(ARG1);
+  Atom at;
+  bool rc;
+  if (IsVarTerm(t)) {
+    Yap_Error(INSTANTIATION_ERROR, t, "file_base_name/2");
+    return false;
+  }
+  int l = push_text_stack();
+  const char *buf = Yap_TextTermToText(t PASS_REGS);
+  if (buf) {
+    rc = Yap_IsAbsolutePath(buf, true);
+  } else {
+    at = AtomOfTerm(t);
+#if _WIN32
+    rc = PathIsRelative(RepAtom(at)->StrOfAE);
+#else
+    rc = RepAtom(at)->StrOfAE[0] == '/';
+#endif
+  }
+  pop_text_stack(l);
+  return rc;
+}
+
+static Int file_base_name(USES_REGS1) { /* file_base_name(Stream,N) */
+  const char *s, *c;
+  Term t = Deref(ARG1);
+  Atom at;
+  if (IsVarTerm(t)) {
+    Yap_Error(INSTANTIATION_ERROR, t, "file_base_name/2");
+    return FALSE;
+  }
+  if (IsAtomTerm(t)) {
+    at = AtomOfTerm(t);
+    c = RepAtom(at)->StrOfAE;
+  } else if (IsStringTerm(t)) {
+    c = StringOfTerm(t);
+  } else {
+    Yap_ThrowError(TYPE_ERROR_ATOM, t, NULL);
+    return false;
+  }
+#if HAVE_BASENAME && 0 // DISABLED: Linux basename is not compatible with
+                       // file_base_name in SWI and GNU
+  char c1[MAX_PATH + 1];
+  strncpy(c1, c, MAX_PATH);
+  s = basename(c1);
+#else
+  Int i = strlen(c);
+  while (i && !Yap_dir_separator((int)c[--i]))
+    ;
+  if (Yap_dir_separator((int)c[i])) {
+    i++;
+  }
+  s = c + i;
+#endif
+  if (IsAtomTerm(t))
+    return Yap_unify(ARG2, MkAtomTerm(Yap_LookupAtom(s)));
+  else
+    return Yap_unify(ARG2, MkStringTerm(s));
+}
+
+/**
+ * file_directory_name(+Path, -DirSubPath)
+ *
+ * given a path, return the prefix of the path that describes the directory  the path leads to.
+ *
+ * Notice  that the directory may not exist. In UNIX/Linux this is just the prefix for the last `/`.
+ */
+
+static Int file_directory_name(USES_REGS1) { /* file_directory_name(Stream,N) */
+  Term t = Deref(ARG1);
+  Atom at;
+  const char *c;
+  
+  if (IsVarTerm(t)) {
+    Yap_Error(INSTANTIATION_ERROR, t, "file_directory_name/2");
+    return false;
+  }
+  if (IsAtomTerm(t)) {
+    at = AtomOfTerm(t);
+    c = RepAtom(at)->StrOfAE;
+  } else if (IsStringTerm(t)) {
+    c = StringOfTerm(t);
+  } else {
+    Yap_ThrowError(TYPE_ERROR_ATOM, t, NULL);
+    return false;
+  }
+#if HAVE_BASENAME && 0 // DISABLED: Linux basename is not compatible with
+                       // file_base_name in SWI and GNU
+  const char *s;
+  char c1[MAX_PATH + 1];
+  strncpy(c1, c, MAX_PATH);
+  s = dirname(c1);
+#else
+  char s[MAX_PATH + 1];
+  ssize_t i=0;
+  if (c && c[0]) {
+    i = strlen(c);
+      strncpy(s, c, MAX_PATH);
+      while (--i) {
+	if (Yap_dir_separator((int)c[i]))
+	  break;
+      }
+  }  else {
+    if (i == 0) {
+      s[0] = '.';
+      i = 1;
+    }
+  }
+  s[i] = '\0';
+#endif
+  if (IsAtomTerm(t))
+  return Yap_unify(ARG2, MkAtomTerm(Yap_LookupAtom(s)));
+  else
+      return Yap_unify(ARG2, MkStringTerm(s));
+
+}
+
 void Yap_InitAbsfPreds(void) {
   Yap_InitCPred("path_concat", 2, path_concat,0);
   Yap_InitCPred("expand_file_name", 2, p_expand_file_name, SyncPredFlag);
   Yap_InitCPred("prolog_to_os_filename", 2, prolog_to_os_filename,
                 SyncPredFlag);
-  Yap_InitCPred("absolute_file_system_path", 2, absolute_file_system_path, 0);
   Yap_InitCPred("absolute_file_system_path", 2, absolute_file_system_path, 0);
   Yap_InitCPred("absolute_file_name", 2, real_path, 0);
   Yap_InitCPred("true_file_name", 2, true_file_name, SyncPredFlag);
@@ -1009,4 +1168,9 @@ void Yap_InitAbsfPreds(void) {
   Yap_InitCPred("abs_file_parameters", 2, abs_file_parameters,  HiddenPredFlag);
   Yap_InitCPred("get_abs_file_parameter", 3, get_abs_file_parameter, HiddenPredFlag);
   Yap_InitCPred("file_name_extension", 3, file_name_extension, 0);
+  Yap_InitCPred("file_base_name", 2, file_base_name, SafePredFlag);
+  Yap_InitCPred("file_directory_name", 2, file_directory_name, SafePredFlag);
+  Yap_InitCPred("is_absolute_file_name", 1, is_absolute_file_name, SafePredFlag);
 }
+
+/// @}

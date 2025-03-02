@@ -9,15 +9,11 @@
 **************************************************************************
 *									 *
 * File:		yio.yap							 *
-* Last rev:								 *
-* mods:									 *
 * comments:	Input output predicates			 		 *
 *									 *
 *************************************************************************/
 
-
-
-:- system_module( '$_yio', [at_end_of_line/0,
+:- system_module_( '$_yio', [at_end_of_line/0,
         at_end_of_line/1,
         consult_depth/1,
         current_char_conversion/2,
@@ -55,8 +51,7 @@
 
 :- use_system_module( '$_errors', [throw_error/2]).
 
-/** @defgroup InputOutput Input/Output Predicates
- * @ingroup Builtins
+/** @addtogroup InputOutput
  * @{
  * 
  * Some of the Input/Output predicates described below will in certain conditions
@@ -157,7 +152,7 @@
 %! @}
 
 %! @addtogroup Format
-%! @ingroup InputOutput
+
 
 %%   @{
 
@@ -199,7 +194,7 @@ The same as `get0(C)`, but from stream user_input.
 */
 ttyget0(N) :- get0(user_input,N).
 
-/** @pred  ttyskip(- _C_)
+	   									/** @pred  ttyskip(	- _C_)
 
 
 Like skip/1, but always using stream user_input.
@@ -226,11 +221,10 @@ Outputs a new line to stream user_output.
 */
 ttynl :- nl(user_output).
 
-%! @}
+%% @}
 
-%! @addtogroup StreamM
-%! @ingroup InputOutput
-%!   @{
+%% @addtogroup StreamM
+%%   @{
 
 /** @pred  current_line_number(- _LineNumber_)
 
@@ -312,10 +306,10 @@ split_path_file(File, Path, Name) :-
 	file_directory_name(File, Path),
 	file_base_name(File, Name).
 
-%! @}
+%% @}
 
-%! @addtogroup StreamM
-%!   @{
+%% @addtogroup StreamM
+%%   @{
 
 /** @pred  current_stream( _F_, _M_, _S_)
 
@@ -402,7 +396,13 @@ stream_position_data(Prop, Term, Value) :-
 '$set_encoding'(Enc) :-
     set_stream(loop_stream, encoding(Enc)).
 
-%! @}
+'$codes_to_chars'(String0, String, String0) :- String0 == String, !.
+'$codes_to_chars'(String0, [Code|String], [Char|Chars]) :-
+	atom_codes(Char, [Code]),
+	'$codes_to_chars'(String0, String, Chars).
+
+
+%% @}
 
 /**
  * @defgroup FilesM File and Directory Operations
@@ -410,12 +410,6 @@ stream_position_data(Prop, Term, Value) :-
  * @{
  *
  */
-'$codes_to_chars'(String0, String, String0) :- String0 == String, !.
-'$codes_to_chars'(String0, [Code|String], [Char|Chars]) :-
-	atom_codes(Char, [Code]),
-	'$codes_to_chars'(String0, String, Chars).
-
-
 
 /** @pred  exists(+ _F_)
 
@@ -431,14 +425,15 @@ exists(F) :-
       Renames the single file  _F_ to  _G_.
 */
 rename(IFile, OFile) :-
-	absolute_file_name(IFile, IF, [access(read),expand(true)]),
+
+    absolute_file_name(IFile, IF, [access(read),expand(true)]),
 	absolute_file_name(OFile, OF, [expand(true)]),
 	'$rename'(IF, OF).
 
 /** @pred  access_file(+F , +G)
 
       Verify whether file F respects property _G_. The file is  processed
-      with absolute_file_name.
+  with absolute_file_name.
 */
 access_file(IFile, Access) :-
     absolute_file_name(IFile, _IF, [access(Access),expand(true)]).
@@ -454,7 +449,7 @@ prolog_file_name(File, PrologFileName) :-
 prolog_file_name(user, Out) :- !, Out = user.
 prolog_file_name(File, PrologFileName) :-
         atom(File), !,
-        system:true_file_name(File, PrologFileName).
+        true_file_name(File, PrologFileName).
 prolog_file_name(File, PrologFileName) :-
         throw_error(type_error(atom,File), prolog_file_name(File, PrologFileName)).
 
@@ -465,7 +460,7 @@ prolog_file_name(File, PrologFileName) :-
 
    */
 fileerrors :-
-    yap_flag(file_errors, _, error).
+    set_prolog_flag(file_error, error).
 
 
   /**
@@ -478,43 +473,7 @@ fileerrors :-
 
    */
 nofileerrors :-
-    yap_flag(file_errors, _, fail).
-
-read_term(Stream, T, Opts) :-
-    catch( '$read_term'(Stream, T, Opts),
-	   Except,
-	   '$read_term_handler'(Opts,Except)
-	 ),
-    (var(Except) -> true ;
-    '$prompt',
-    read_term(Stream, T, Opts) ).
-    
-
-'$read_term_handler'(Opts,error(syntax_error(Msg), Info)) :-
-    !,
-    (
-	'$member'(syntax_errors(Action),Opts)
-    ->
-    true
-    ;
-    current_prolog_flag(syntax_errors, Action)
-    ),
-    '$read_term_dispatcher'( Action, error(syntax_error(Msg), Info) ).
-'$read_term_handler'(_Opts,Except) :-
-    throw(Except).
+    set_prolog_flag(file_errors, fail).
 
 
-'$read_term_dispatcher'( error, Error) :-
-    throw(Error).
-'$read_term_dispatcher'( warning, Error) :-
-    print_message(warning, Error),
-    fail.
-'$read_term_dispatcher'( dec10, Error) :-
-    print_message(warning, Error).
-    
-			     
-
-
-/**
-@}
-*/
+%% @}

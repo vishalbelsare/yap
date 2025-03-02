@@ -1,3 +1,6 @@
+/// @file yapi.cpp
+/// @brief C++ interface support
+#include "yapi.hh"
 
 extern "C" {
 
@@ -7,9 +10,6 @@ extern "C" {
 }
 
 #include <vector>
-
-#include "yapi.hh"
-
 
 
 extern "C" {
@@ -22,11 +22,7 @@ extern "C" {
 #include "Python.h"
 #endif
 
-#include "YapBlobs.h"
-#include "YapInterface.h"
-#include "iopreds.h"
-    
-#include "YapInit.h"
+  //#include "YapInit.h"
 
 X_API extern char *Yap_TermToBuffer(Term t, int flags);
 
@@ -42,6 +38,8 @@ X_API extern void YAP_UserBackCPredicate(const char *, YAP_UserCPred, YAP_UserCP
 X_API bool do_init_python(void);
 #endif
 }
+
+
 
 static void YAPCatchError() {
     CACHE_REGS
@@ -209,14 +207,21 @@ YAPStringTerm::YAPStringTerm(std::string &s) { // build string
 
 
   Term ts = MkStringTerm(s.c_str());
+  if (HR  > ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::string");    
+  }
   mk(ts);
   RECOVER_H();
 }
 
 YAPApplTerm::YAPApplTerm(YAPFunctor f, YAPTerm ts[]) {
+  CACHE_REGS
   BACKUP_H();
   arity_t arity = ArityOfFunctor(f.f);
   Term o = Yap_MkNewApplTerm(f.f, arity);
+  if (HR  > ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::string");    
+  }
   Term *tt = RepAppl(o) + 1;
   for (arity_t i = 0; i < arity; i++)
     tt[i] = ts[i].term();
@@ -232,6 +237,9 @@ YAPApplTerm::YAPApplTerm(const std::string f, std::vector<Term> ts) {
     Functor ff = Yap_MkFunctor(Yap_LookupAtom(f.c_str()), arity);
     Term o = AbsAppl(HR);
     Term *tt = HR;
+    if (HR + (1+arity)  > ASP - 1024) {
+      throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::string");
+    }
     HR+=1+arity;
     *tt++=(CELL)ff;
     for (arity_t i = 0; i < arity; i++)
@@ -251,6 +259,9 @@ YAPApplTerm::YAPApplTerm(const std::string f, std::vector<YAPTerm> ts) {
     Functor ff = Yap_MkFunctor(Yap_LookupAtom(f.c_str()), arity);
     Term o = AbsAppl(HR);
     Term *tt = HR;
+    if (HR + (1+arity)  > ASP - 1024) {
+      throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::string");
+    }
     HR+=1+arity;
     *tt++=(CELL)ff;
     for (arity_t i = 0; i < arity; i++)
@@ -263,7 +274,11 @@ YAPApplTerm::YAPApplTerm(const std::string f, std::vector<YAPTerm> ts) {
 
 YAPApplTerm::YAPApplTerm(YAPFunctor f) : YAPTerm() {
   BACKUP_H();
+  CACHE_REGS
   arity_t arity = ArityOfFunctor(f.f);
+    if (HR + (1+arity)  > ASP - 1024) {
+      throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::string");
+    }
   mk(Yap_MkNewApplTerm(f.f, arity));
   RECOVER_H();
 }
@@ -435,7 +450,8 @@ Term YAPListTerm::dup() {
   BACKUP_MACHINE_REGS();
 
   tn = Yap_CopyTerm(gt());
-
+  if (!tn)
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,tn,"YAPQuery::dup");
   RECOVER_MACHINE_REGS();
   return tn;
 }
@@ -480,12 +496,12 @@ YAPListTerm::YAPListTerm(Term ts[], size_t n) {
         CACHE_REGS
 
   BACKUP_H();
-  while (HR + n * 3 > ASP-1024) {
-    RECOVER_H();
-    if (!Yap_dogc( PASS_REGS1 )) {
-      mk(TermNil);
-    }
-    BACKUP_H();
+  if (n == 0) {
+    mk(TermNil);
+    return;
+  }
+  if (HR + n * 3 > ASP-1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(ts[],n)");
   }
   Term rc = AbsAppl(HR);
   CELL *ptr = HR;
@@ -499,19 +515,42 @@ YAPListTerm::YAPListTerm(Term ts[], size_t n) {
   mk(rc);
 }
 
+YAPListTerm::YAPListTerm( std::vector<YAPTerm> ts) {
+  CACHE_REGS
+  BACKUP_H();
+  size_t n=ts.size();
+  if (n == 0) {
+    mk(TermNil);
+    return;
+  }
+  if (HR + n * 2 > ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::vector<YAPTerm>)");
+  }
+  Term a = AbsPair(HR);
+  CELL *ptr = HR;
+  HR += 2*n;
+  for (arity_t i = 0; i < n; i++) {
+    ptr[0] = MkGlobal(ts[i].term());
+    ptr[1] = AbsPair(ptr + 2);
+    ptr += 2;
+  }
+  ptr[-1]=TermNil;
+  mk(a);
+  RECOVER_H();
+}
+
+
 YAPListTerm::YAPListTerm(const std::vector<Term> ts) {
   CACHE_REGS
   BACKUP_H();
   size_t n=ts.size();
-  if (n == 0)
+  if (n == 0) {
     mk(TermNil);
-  while (HR + n * 2 > ASP - 1024) {
-    RECOVER_H();
-    if (!Yap_dogc( PASS_REGS1 )) {
-      mk(TermNil);
-    }
-    BACKUP_H();
+    return;
   }
+  if (HR + n * 2 > ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::vector<Term>)");
+    }
   Term a = AbsPair(HR);
   CELL *ptr = HR;
   HR += 2*n;
@@ -558,13 +597,9 @@ YAPConjunctiveTerm::YAPConjunctiveTerm(const std::vector<Term> ts) {
     mk(ts[0]);
     return;
   }
-  while (HR + n * 3 > ASP - 1024) {
-    RECOVER_H();
-    if (!Yap_dogc( PASS_REGS1 )) {
-      mk(TermNil);
+  if (HR + n * 3> ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::vector<Term>");
     }
-    BACKUP_H();
-  }
   Term a = AbsAppl(HR);
   CELL *ptr = HR;
   HR += 3*(n-1);
@@ -591,12 +626,8 @@ YAPConjunctiveTerm::YAPConjunctiveTerm(const Term ts[], size_t n) {
     mk(ts[0]);
     return;
   }
-  while (HR + n * 3 > ASP - 1024) {
-    RECOVER_H();
-    if (!Yap_dogc( PASS_REGS1 )) {
-      mk(TermNil);
-    }
-    BACKUP_H();
+  if (HR + n * 3 > ASP - 1024) {
+    throw YAPError(__FILE__,__FUNCTION__,__LINE__,RESOURCE_ERROR_STACK,TermNil,"YAPListTerm::YAPListTerm(std::vector<Term>");
   }
   Term a = AbsAppl(HR);
   CELL *ptr = HR;
@@ -1051,12 +1082,12 @@ void Yap_displayWithJava(int c) {
 #endif
 
 void YAPEngine::doInit(YAP_file_type_t BootMode, YAPEngineArgs *engineArgs) {
-        CACHE_REGS
 
   if (GLOBAL_Initialised)
     return;
   GLOBAL_Initialised = true;
   YAP_Init(engineArgs);
+        CACHE_REGS
 // yerror = throw YAPError( SOURCE(), );
 CurrentModule = LOCAL_SourceModule = TermUser;
 #if YAP_PYTHON
@@ -1144,48 +1175,13 @@ bool YAPPrologPredicate::assertClause(YAPTerm cl, bool last, YAPTerm source) {
   CACHE_REGS
 
   RECOVER_MACHINE_REGS();
-  Term tt = cl.gt();
-  Term ntt = cl.gt();
-  gc_entry_info_t info;
-    Yap_track_cpred( _Ystop, P, 0,   &info);
-
-  yamop *codeaddr =
-    Yap_cclause(tt, ap->ArityOfPE, (last ? TermAssertz : TermAsserta),MkIntTerm(0), Yap_CurrentModule(), (void*)&info); /* vsc: give the number of arguments
-                               to cclause in case there is overflow */
-  if (LOCAL_ErrorMessage) {
-    RECOVER_MACHINE_REGS();
-    return false;
-  }
-  Term *tref = &ntt;
-  if (Yap_addclause(ntt, codeaddr, (last ? TermAssertz : TermAsserta),
-                    Yap_CurrentModule(), tref)) {
-    RECOVER_MACHINE_REGS();
-  }
-  return tref;
+  bool rc =     Yap_Compile(cl.gt(), (last ? TermAssert : TermAsserta), cl.gt(), CurrentModule, MkIntTerm(0), TermNil PASS_REGS);
+   RECOVER_MACHINE_REGS();
+  return rc;
 }
 
 bool YAPPrologPredicate::assertFact(YAPTerm *cl, bool last) {
-  CACHE_REGS
-  arity_t i;
-  RECOVER_MACHINE_REGS();
-      gc_entry_info_t info;
-    Yap_track_cpred( _Ystop, P, 0,   &info);
-Term tt = AbsAppl(HR);
-  *HR++ = (CELL)(ap->FunctorOfPred);
-  for (i = 0; i < ap->ArityOfPE; i++, cl++)
-    *HR++ = cl->gt();
-  yamop *codeaddr = Yap_cclause(tt, ap->ArityOfPE, (last ? TermAssertz : TermAsserta), MkIntTerm(0), CurrentModule,( void *) &info); /* vsc: give the number of arguments
-                                        to cclause in case there is overflow */
-  if (LOCAL_ErrorMessage) {
-    RECOVER_MACHINE_REGS();
-    return false;
-  }
-  Term *tref = &tt;
-  if (Yap_addclause(tt, codeaddr, (last ? TermAssertz : TermAsserta),
-                    Yap_CurrentModule(), tref)) {
-    RECOVER_MACHINE_REGS();
-  }
-  return tref;
+  return assertClause(cl, last);
 }
 
 void *YAPPrologPredicate::retractClause(YAPTerm skeleton, bool all) {
@@ -1272,7 +1268,7 @@ Term YAPEngine::top_level(std::string s) {
   } else {
     ts[1] = TermNil;
   }
-  return YAP_MkApplTerm(YAP_MkFunctor(YAP_LookupAtom("t"), 2), 2, ts);
+  return Yap_MkApplTerm(Yap_MkFunctor(Yap_LookupAtom("t"), 2), 2, ts);
 }
 
 Term YAPEngine::next_answer(YAPQuery *&Q) {
@@ -1289,3 +1285,5 @@ Term YAPEngine::next_answer(YAPQuery *&Q) {
   }
   return YAP_MkApplTerm(YAP_MkFunctor(YAP_LookupAtom("t"), 2), 2, ts);
 }
+
+

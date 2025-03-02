@@ -42,7 +42,7 @@ add_subdirectory(postgres)
 endif()
        set(CXX_SWIG_OUTDIR ${CMAKE_BINARY_DIR}/packages/swig/android)
 
-add_component(myddas
+add_library(YAPmyddas
         ${MYDDAS_SOURCES}
         ${MYDDAS_UTIL_SOURCES}
         ${MYDDAS_HEADERS}
@@ -54,8 +54,14 @@ SET_PROPERTY(SOURCE ${MYDDAS_SOURCES}
 
 add_subdirectory(pl)
 
+install(TARGETS YAPmyddas
+      LIBRARY DESTINATION ${YAP_INSTALL_LIBDIR}
+      RUNTIME DESTINATION ${YAP_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${YAP_INSTALL_LIBDIR} )
 
-MY_set_target_properties(myddas PROPERTIES
+target_link_libraries(YAPmyddas libYap)
+
+set_target_properties(YAPmyddas PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         )
 
@@ -63,4 +69,4 @@ cmake_dependent_option(USE_MYDDAS_Stats
         "enable the MYDDAS library statistics support" OFF
         USE_MYDDAS OFF)
 
-add_dependencies(myddas MYDDAS_PL)
+add_dependencies(YAPmyddas MYDDAS_PL)

@@ -24,14 +24,12 @@
       LOG(" %s ", s);
 #endif
       check_trail(TR);
-      if (!(PREG->y_u.Osbpp.p->PredFlags &
-            (SafePredFlag | NoTracePredFlag | HiddenPredFlag))) {
+      	PredEntry *pt0 = PREG->y_u.Osbpp.p;
         CACHE_Y_AS_ENV(YREG);
-        check_stack(NoStackCCall, HR);
+	if (!(pt0->PredFlags & SafePredFlag)) {
+	  check_stack(NoStackCCall, HR);
+	}
         ENDCACHE_Y_AS_ENV();
-      }
-      {
-	PredEntry *pt0 = PREG->y_u.Osbpp.p;
     do_ccall :
       SET_ASP(YREG, AS_CELLS(PREG->y_u.Osbpp.s) );
       /* for slots to work */
@@ -41,14 +39,17 @@
 #endif /* LOW_LEVEL_TRACE */
       BEGD(d0);
       CPredicate f = pt0->cs.f_code;
-      PREG = NEXTOP(PREG, Osbpp);
+      SREG=(CELL *)PREG;
+      yamop *op = PREG;
       saveregs();
-      d0 = (f)(PASS_REGS1);
+      d0 = f(PASS_REGS1);
       setregs();
 #ifdef SHADOW_S
       SREG = Yap_REGS.S_;
 #endif
-
+      if (PREG==op) {
+     PREG = NEXTOP(PREG, Osbpp);
+     }
       if (!d0) {
         FAIL();
       }
@@ -57,10 +58,9 @@
       JMPNext();
 
     NoStackCCall:
-EXPORT_INT(interrupt_c_call, pt0);
+	EXPORT_INT(interrupt_c_call, pt0);
 
 	goto do_ccall;
-      }
       ENDCACHE_Y_AS_ENV();
       JMPNext();
       ENDBOp();
@@ -119,7 +119,7 @@ EXPORT_INT(interrupt_c_call, pt0);
           if (oldPREG == PREG) {
             /* we did not update PREG */
             /* we can proceed */
-            PREG = CPREG;
+            PREG = P = CP;
             ENV_YREG = ENV;
 #ifdef DEPTH_LIMIT
             DEPTH = ENV_YREG[E_DEPTH];
@@ -135,6 +135,7 @@ EXPORT_INT(interrupt_c_call, pt0);
 
     NoStackExecuteC:
       EXPORT_INT(interrupt_executec, pt0);
+
 
        goto do_executec;
     }
@@ -183,20 +184,21 @@ EXPORT_INT(interrupt_c_call, pt0);
         {
           PredEntry *p = PREG->y_u.Osbpp.p;
 
-          PREG = NEXTOP(PREG, Osbpp);
           savedP = PREG;
           saveregs();
           save_machine_regs();
 
           SREG = (CELL *)YAP_Execute(p, p->cs.f_code);
-        }
         setregs();
         LOCAL_PrologMode &= ~UserCCallMode;
         restore_machine_regs();
-        PREG = savedP;
+      if (PREG==savedP)
+	PREG=NEXTOP(PREG, Osbpp);
+        }
+
       }
       if (Yap_HasException(PASS_REGS1)) {
-bool Yap_RaiseException();
+Yap_RaiseException();
         SREG = NULL;
       }
       if (!SREG) {
@@ -459,6 +461,7 @@ bool Yap_RaiseException();
           /* update ASP before calling IPred */
           SET_ASP(YREG, EnvSizeInCells );
           saveregs();
+
           Yap_IPred(ap, 0, CP);
           /* IPred can generate errors, it thus must get rid of the lock itself
            */
@@ -477,7 +480,8 @@ bool Yap_RaiseException();
         PredEntry *ap = PredFromDefCode(PREG);
 #if defined(YAPOR) || defined(THREADS)
         /*
-          we do not lock access to the predicate,
+          we do
+	  not lock access to the predicate,
           we must take extra care here
         */
         if (!PP) {
@@ -601,12 +605,10 @@ bool Yap_RaiseException();
       /* save S for module name */
       {
         PredEntry *pe = PredFromDefCode(PREG);
-        LOCAL_DoingUndefp = true;
 	saveregs();
 	undef_goal(pe PASS_REGS);
 	setregs();
 	/* for profiler */
-        LOCAL_DoingUndefp = false;
       }
 	CACHE_A1();
       JMPNext();

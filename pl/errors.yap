@@ -49,9 +49,9 @@ Other types of terms result in a message.
 
 */
 
-:- system_module( '$_errors', [throw_error/2], ['$Error'/1,
-                                                 system_error/3,
-                                                 system_error/2]).
+:- system_module_( '$_errors', [], [throw_error/2,
+				    error_handler/2,
+				   error_handler/0]).
 
 :- use_system_module( '$messages', [file_location/2,
         generate_message/3,
@@ -64,121 +64,38 @@ Other types of terms result in a message.
  * Generate a system error _Error_, informing the possible cause _Cause_.
  *
  */
+
+
+
+throw_error(_,error(Type,Goal)) :-
+    !,
+    throw(error(Type,Goal)).
 throw_error(Type,Goal) :-
     throw(error(Type,Goal)).
 
-
-'$do_io_error'(_Type,__Goal) :-
-      prolog_flag(file_errors, fail),
+throw_file_error(_Type,__Goal) :-
+   current_prolog_flag(file_errors,fail),
       !,
       false.
-'$do_io_error'(Type,Goal) :-
-        throw_error(Type,Goal).
 
-'$Error'(E) :-
-    '$new_exception'(Info),
-    '$Error'(E, Info),
-    fail.
+throw_file_error(Type,Goal) :-
+    throw(error(Type,Goal)).
 
-'$Error'(error(Class,Hint), Info) :-
-    (Info = exception(I),
-       '$read_exception'(I,List) -> true;  List = Info ),
-    '$add_error_hint'(Hint, List, NewInfo),
-    print_message(error,error(Class,NewInfo)),
-  fail.
-%%
-
-'$add_error_hint'(V, Info, Info) :-
-    var(V),
-    !.    
-'$add_error_hint'([], Info, Info) :-
-    !.    
-'$add_error_hint'(Hint, Info, NewInfo) :-
-    atom(Hint),
-    !,
-    atom_string(Hint, String),
-    (
-	'$delete'(Info, errorMsg = Msg, Left) 
-    ->
-    string_concat([Msg,`\n user message: `,String], FullMsg),
-    NewInfo = [errorMsg=FullMsg|Left]
-    ;
-    string_concat([` user message: `,String], FullMsg),
-    NewInfo = [errorMsg=FullMsg|Info]
-    ).
-'$add_error_hint'(String, Info, NewInfo) :-
-    string(String),
-    !,
-    (
-	'$delete'(Info, errorMsg = Msg, Left) 
-    ->
-    string_concat([Msg,`\n user message: `,String], FullMsg),
-    NewInfo = [errorMsg=FullMsg|Left]
-    ;
-    string_concat([` user message: `,String], FullMsg),
-    NewInfo = [errorMsg=String|Info]
-    ).
-'$add_error_hint'(Codes, Info, NewInfo) :-
-    Codes=[_|_],
-    !,
-    string_codes(String, Codes),
-    (
-	'$delete'(Info, errorMsg = Msg, Left) 
-    ->
-    string_concat([Msg,`\n user message: `,String], FullMsg),
-    NewInfo = [errorMsg=FullMsg|Left]
-    ;
-    NewInfo = [errorMsg=String|Info]
-    ).
-'$add_error_hint'(Goal, Info, NewInfo) :-
-    term_to_string(Goal, String),
-    (
-	'$delete'(Info, errorMsg = Msg, Left),
-	nonvar(Msg),
-	Msg \= ''
-    ->
-    string_concat([Msg,`\n YAP crashed while running : `,String], FullMsg),
-    NewInfo = [errorMsg=FullMsg|Left]
-    ;
-    string_concat([`\n YAP crashed while running : `,String], FullMsg),
-    NewInfo = [errorMsg=String|Info]
-    ).
-		     
-
-% error_handler(+Error,+ Level)
+% error_handler(+E                          rror,+ Level)
 %
 % process an error term.
 %
-error_handler(Error, Level) :-
-    '$LoopError'(Error, Level).
-
-'$LoopError'(_, _) :-
+error_handler(_, _) :-
     set_prolog_flag(compiling, false),
     flush_output(user_output),
     flush_output(user_error),
     fail.
-'$LoopError'('$forward'(Msg),  _) :-
+error_handler(_Level, error(event(abort,_I),_C)) :-
     !,
-    throw( '$forward'(Msg) ).
-'$LoopError'(error(event(abort,I),C), Level) :-
+    abort.
+error_handler(Level,error(Spec,Info)) :-
     !,
-    (
-        prolog_flag(break_level, 0),
-	Level \== top
-    ->
-    print_message(informational,abort(user)),
-    '$error_clean',
-    fail
-    ;	 throw( error(event(abort,I),C) )
-    ).
-'$LoopError'(redo(Info), _Level) :-
-    !,
-    throw(redo(Info)).
-'$LoopError'(fail(Info), _Level) :-
-    !,
-    throw(fail(Info)).
-'$LoopError'(error(Class,Hint), _) :-
-    '$Error'(error(Class,Hint)).
+    '$process_error'(error(Spec,Info), Level).
     
 '$error_clean' :-
 	flush_output,
@@ -191,8 +108,10 @@ error_handler(Error, Level) :-
 '$process_error'(Error, Level) :-
 	print_message(Level, Error),
 	!,
-	'$close_error'(_).
+%	'$close_error'(_),
+        fail.
 '$process_error'(error(Type,Info), Level) :-
-	print_message(Level,error(unhandled_exception(Type),Info)).
+    print_message(Level,error(unhandled_exception(Type),Info)),
+fail.
 
 %% @}

@@ -36,24 +36,22 @@ shared_fail:
   /* fail                             */
   PBOp(op_fail, e);
 
-  if (PP) {
-    UNLOCK(PP->PELock);
-    PP = NULL;
-  }
-  CACHE_Y_AS_ENV(YREG);
-  check_stack(NoStackFail, HR);
-  ENDCACHE_Y_AS_ENV();
-
 fail : {
 
-    
+
   register tr_fr_ptr pt0 = TR;
+  CACHE_Y_AS_ENV(YREG); 
+  check_stack(NoStackFail, HR);
+  ENDCACHE_Y_AS_ENV();
+  failing:
+  pt0 = TR;
 #if defined(YAPOR) || defined(THREADS)
   if (PP) {
     UNLOCK(PP->PELock);
     PP = NULL;
   }
 #endif
+
   PREG = B->cp_ap;
   save_pc();
   CACHE_TR(B->cp_tr);
@@ -222,6 +220,7 @@ RESTORE_TR();
       RESET_VARIABLE(STACK_TO_SBA(d1));
     } else
 #endif
+      if (d1)
       /* normal variable */
       RESET_VARIABLE(d1);
     goto failloop;
@@ -230,7 +229,7 @@ RESTORE_TR();
 /* or updatable variable */
   if (IsPairTerm(d1))
   {
-    register CELL flags;
+     CELL flags;
     CELL *pt1 = RepPair(d1);
 #ifdef LIMIT_TABLING
     if ((ADDR)pt1 == LOCAL_TrailBase) {
@@ -255,19 +254,18 @@ RESTORE_TR();
       goto failloop;
     } else
 #endif /* FROZEN_STACKS */
-        if (IN_BETWEEN(H0, pt1, HR)) {
-      if (IsAttVar(pt1)) {
-        goto failloop;
-      } else {
+      if (TrailVal(pt0) == 0) {
+	TR = pt0;
 	RESET_VARIABLE(&TrailTerm(pt0));
 	RESET_VARIABLE(&TrailVal(pt0));
-	TR = pt0;
 	Yap_CleanOpaqueVariable(d1);
 	pt0 = TR;
-	TR = B->cp_tr;
-	P = B->cp_ap;
+  save_pc();
+  S_TR = B->cp_tr;
+  PREFETCH_OP(PREG);
 	goto failloop;
-      }
+      } else if (IsAttVar(pt1)) {
+        goto failloop;
     }
 #ifdef FROZEN_STACKS /* TRAIL */
     /* don't reset frozen variables */
@@ -327,6 +325,7 @@ hence we don't need to have a lock it */
           if (ap) {
 
             PELOCK(9, ap);
+	    PP = ap;
             DEC_CLREF_COUNT(cl);
             erase = (cl->ClFlags & ErasedMask) && !(cl->ClRefCount);
             if (erase) {
@@ -387,18 +386,17 @@ hence we don't need to have a lock it */
 #endif
     goto failloop;
   }
-  else /* if (IsApplTerm(d1)) */
+  else if (IsApplTerm(d1))
   {
     CELL *pt = RepAppl(d1);
 /* AbsAppl means */
 /* multi-assignment variable */
 /* so the next cell is the old value */
+    pt0--;
 #ifdef FROZEN_STACKS
     pt[0] = TrailVal(pt0);
-    
 #else
-    pt[0] = TrailTerm(pt0 - 1);
-    pt0 -= 1;
+    pt[0] = TrailTerm(pt0 );
 #endif /* FROZEN_STACKS */
     goto failloop;
   }
@@ -421,8 +419,9 @@ hence we don't need to have a lock it */
     SREG = Yap_REGS.S_;
 #endif
     if (pe==NULL)
-      goto fail;
+      goto failing;
     PREG = P = pe->CodeOfPred;
+
     JMPNext();
   }
 #ifdef INDENT_CODE

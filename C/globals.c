@@ -140,17 +140,27 @@ inline static GlobalEntry *FindGlobalEntry(Atom at USES_REGS)
 /* get predicate entry for ap/arity; create it if neccessary. */
 {
     Prop p0;
-    AtomEntry *ae = RepAtom(at);
 
-    READ_LOCK(ae->ARWLock);
+    AtomEntry *ae = RepAtom(at);
+#if THREADS
+    if (worker_id > 0) {
+      p0 = LOCAL_ThreadHandle.ge;
+    } else
+#endif
+      {
     p0 = ae->PropsOfAE;
+      }
+    READ_LOCK(ae->ARWLock);
     while (p0) {
         GlobalEntry *pe = RepGlobalProp(p0);
-        if (pe->KindOfPE == GlobalProperty
+        if (
 #if THREADS
-            && pe->owner_id == worker_id
-#endif
-                ) {
+	    worker_id > 0 ?
+	    pe->AtomOfGE == ae
+:
+ #endif
+	    pe->KindOfPE == GlobalProperty
+	    ) {
             READ_UNLOCK(ae->ARWLock);
             return pe;
         }
@@ -247,8 +257,11 @@ static Int nb_add_to_accumulator(USES_REGS1) {
         CELL *source = RepAppl(new);
 
 #if SIZEOF_DOUBLE == 2 * SIZEOF_INT_P
-        target[2] = source[2];
+        target[4] = source[4];
+        target[3 = source[3];
+
 #endif
+        target[2] = source[2];
         target[1] = source[1];
         return TRUE;
     }
@@ -297,9 +310,7 @@ Term Yap_SetGlobalVal(Atom at, Term t0) {
     to = CopyTermToArena(t0, FALSE, TRUE, NULL, &(LOCAL_GlobalArena), NULL PASS_REGS);
     if (to == 0L)
         return to;
-    WRITE_LOCK(ge->GRWLock);
     ge->global = to;
-    WRITE_UNLOCK(ge->GRWLock);
     return to;
 }
 
@@ -309,7 +320,9 @@ Term Yap_CopyTermToArena(Term inp, Term *arenap) {
 }
 
 Term Yap_SaveTerm(Term t0) {
-    CACHE_REGS
+  CACHE_REGS
+if (IsAtomTerm(t0))
+  return t0;
     Term to;
     to = CopyTermToArena(Deref(t0), false, true, NULL, &LOCAL_GlobalArena, NULL PASS_REGS);
     if (to == 0L)
@@ -379,45 +392,44 @@ static Int nb_set_shared_val(USES_REGS1) {
     to = CopyTermToArena(ARG2, TRUE, TRUE, NULL, &LOCAL_GlobalArena, NULL PASS_REGS);
     if (to == 0L)
         return FALSE;
-    WRITE_LOCK(ge->GRWLock);
     ge->global = to;
-    WRITE_UNLOCK(ge->GRWLock);
-    return TRUE;
+     return TRUE;
 }
 
-static Int p_b_setval(USES_REGS1) {
-    Term t = Deref(ARG1);
+bool Yap_SetBacktrackableGlobalVal(Atom atkey, Term val USES_REGS)
+{
     GlobalEntry *ge;
-
-    if (IsVarTerm(t)) {
-        Yap_ThrowError(INSTANTIATION_ERROR, t, "b_setval");
-        return (TermNil);
-    } else if (!IsAtomTerm(t)) {
-        Yap_ThrowError(TYPE_ERROR_ATOM, t, "b_setval");
-        return (FALSE);
-    }
-    ge = GetGlobalEntry(AtomOfTerm(t) PASS_REGS);
-    WRITE_LOCK(ge->GRWLock);
+    ge = GetGlobalEntry(atkey PASS_REGS);
 #ifdef MULTI_ASSIGNMENT_VARIABLES
     /* the evil deed is to be done now */
     {
         /* but first make sure we are doing on a global object, or a constant!
          */
-        Term t = Deref(ARG2);
-        if (IsVarTerm(t) && VarOfTerm(t) > HR && VarOfTerm(t) < LCL0) {
-            Term tn = MkVarTerm();
-            Bind_Local(VarOfTerm(t), tn);
-            t = tn;
-        }
-        MaBind(&ge->global, t);
+      if (IsVarTerm(val) && VarOfTerm(val) > HR && VarOfTerm(val) < LCL0) {
+	Term tn = MkVarTerm();
+	Bind_Local(VarOfTerm(val), tn);
+	val = tn;
+      }
+      MaBind(&ge->global, val);
     }
-    WRITE_UNLOCK(ge->GRWLock);
-    return TRUE;
+    return true;
 #else
-    WRITE_UNLOCK(ge->GRWLock);
     Yap_ThrowError(SYSTEM_ERROR_INTERNAL, t, "update_array");
     return FALSE;
 #endif
+}
+
+/**
+ * b_setval(+Key, ?Val)
+ *
+ * Associate the term _Val_ with the atom _Key_. This association is
+ * undone by backtracking, or by doing a new b_setval/2. You can use
+ * b_getval to access the term.
+ */
+static Int p_b_setval(USES_REGS1) {
+    Term t = Deref(ARG1);
+    must_be_atom(t);
+    return Yap_SetBacktrackableGlobalVal(AtomOfTerm(t), Deref(ARG2) PASS_REGS);
 }
 
 static int undefined_global(USES_REGS1) {
@@ -445,11 +457,9 @@ static Int nb_getval(USES_REGS1) {
     ge = FindGlobalEntry(AtomOfTerm(t) PASS_REGS);
     if (!ge)
         return undefined_global(PASS_REGS1);
-    READ_LOCK(ge->GRWLock);
     to = ge->global;
     if (!to)
         Yap_ThrowError(INSTANTIATION_ERROR, ARG1, "nb_getval");
-    READ_UNLOCK(ge->GRWLock);
     if (to == TermFoundVar) {
         return FALSE;
     }
@@ -464,14 +474,12 @@ Term Yap_GetGlobal(Atom at) {
     ge = FindGlobalEntry(at PASS_REGS);
     if (!ge)
         return 0L;
-    READ_LOCK(ge->GRWLock);
     to = ge->global;
     if (IsVarTerm(to) && IsUnboundVar(VarOfTerm(to))) {
         Term t = MkVarTerm();
         Bind_and_Trail(VarOfTerm(to), t);
         to = t;
     }
-    READ_UNLOCK(ge->GRWLock);
     if (to == TermFoundVar) {
         return 0;
     }
@@ -496,37 +504,53 @@ Term Yap_GetGlobal(Atom at) {
 
     */
 static Int nbdelete(Atom at USES_REGS) {
-    GlobalEntry *ge, *g;
+  Prop ge;
     AtomEntry *ae;
-    Prop gp, g0;
 
-    ge = FindGlobalEntry(at PASS_REGS);
+    ge =  RepAtom(at)->PropsOfAE;
     if (!ge) {
         Yap_ThrowError(EXISTENCE_ERROR_VARIABLE, MkAtomTerm(at), "nb_delete");
         return FALSE;
     }
-    WRITE_LOCK(ge->GRWLock);
-    ae = ge->AtomOfGE;
-    if (LOCAL_GlobalVariables == ge) {
-        LOCAL_GlobalVariables = ge->NextGE;
-    } else {
-        g = LOCAL_GlobalVariables;
-        while (g->NextGE != ge)
+    ae = RepAtom(at);
+    #if THREADS
+    if (worker_id >0) {
+      Prop g;
+      if (LOCAL_ThreadHandle.ge == ge) {
+	LOCAL_ThreadHandle.ge = RepGlobalProp(ge)->NextOfPE;
+      } else
+	{
+	  g = LOCAL_ThreadHandle.ge;
+	  while (RepGlobalProp(g)->NextOfPE != ge)  {
+	    g  = RepGlobalProp(g)->NextOfPE;
+	    RepGlobalProp(g)->NextOfPE = ge;
+	  }
+	}
+    } else
+#endif
+      {
+	GlobalEntry *g, *ge = FindGlobalEntry(at PASS_REGS);
+	Prop gp;
+	if (LOCAL_GlobalVariables  == (ge)) {
+	  LOCAL_GlobalVariables  =  RepGlobalProp(ge->NextOfPE);
+	} else {
+	  g   = LOCAL_GlobalVariables;
+	  while (g->NextGE != ge)
             g = g->NextGE;
-        g->NextGE = ge->NextGE;
-    }
-    gp = AbsGlobalProp(ge);
-    WRITE_LOCK(ae->ARWLock);
-    if (ae->PropsOfAE == gp) {
-        ae->PropsOfAE = ge->NextOfPE;
-    } else {
-        g0 = ae->PropsOfAE;
-        while (g0->NextOfPE != gp)
+	  g->NextGE = ge->NextGE;
+	}
+	gp = AbsGlobalProp(ge);
+	WRITE_LOCK(ae->ARWLock);
+	if (ae->PropsOfAE == gp) {
+	  ae->PropsOfAE = ge->NextOfPE;
+	} else {
+	  Prop g0 = ae->PropsOfAE;
+	  while (g0->NextOfPE != gp)
             g0 = g0->NextOfPE;
-        g0->NextOfPE = ge->NextOfPE;
-    }
-    WRITE_UNLOCK(ae->ARWLock);
-    WRITE_UNLOCK(ge->GRWLock);
+	  g0->NextOfPE = ge->NextOfPE;
+	}
+	WRITE_UNLOCK(ae->ARWLock);
+      }
     Yap_FreeCodeSpace((char *) ge);
     return TRUE;
 }
@@ -588,9 +612,7 @@ static Int nb_create(USES_REGS1) {
         return false;
     }
 
-    WRITE_LOCK(ge->GRWLock);
     ge->global = to;
-    WRITE_UNLOCK(ge->GRWLock);
     return TRUE;
 }
 
@@ -638,9 +660,7 @@ static Int nb_create2(USES_REGS1) {
     to = CopyTermToArena(tinit, false, false, NULL, &LOCAL_GlobalArena, NULL PASS_REGS);
     if (to == 0)
         return false;
-    WRITE_LOCK(ge->GRWLock);
     ge->global = to;
-    WRITE_UNLOCK(ge->GRWLock);
     return true;
 }
 

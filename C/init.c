@@ -14,6 +14,7 @@
 * comments:	initializing a prolog session				 *
 *									 *
 *************************************************************************/
+
 #ifdef SCCS
 static char SccsId[] = "%W% %G%";
 #endif
@@ -106,86 +107,9 @@ void *YAP_save;
 
 /**
 
-@defgroup Operators Summary of YAP Predefined Operators
-@ingroup YAPSyntax
+@defgroup OperatorImp Operator Impementation
+@ingroup YAPImplementation
 @{
-
-The Prolog syntax caters for operators of three main kinds:
-
-  + prefix;
-  + infix;
-  + postfix.
-
-
-Each operator has precedence in the range 1 to 1200, and this
-precedence is used to disambiguate expressions where the structure of the
-term denoted is not made explicit using brackets. The operator of higher
-precedence is the main functor.
-
-If there are two operators with the highest precedence, the ambiguity
-is solved analyzing the types of the operators. The possible infix types are:
- _xfx_,  _xfy_, and  _yfx_.
-
-With an operator of type  _xfx_ both sub-expressions must have lower
-precedence than the operator itself, unless they are bracketed (which
-assigns to them zero precedence). With an operator type  _xfy_ only the
-left-hand sub-expression must have lower precedence. The opposite happens
-for  _yfx_ type.
-
-A prefix operator can be of type  _fx_ or  _fy_.
-A postfix operator can be of type  _xf_ or  _yf_.
-The meaning of the notation is analogous to the above.
-
-```
-a + b * c
-```
-means
-
-```
-a + (b * c)
-```
-as + and \* have the following types and precedences:
-
-```
-:-op(500,yfx,'+').
-:-op(400,yfx,'*').
-```
-
-Now defining
-
-```
-:-op(700,xfy,'++').
-:-op(700,xfx,'=:=').
-a ++ b =:= c
-```
- means
-
-```
-a ++ (b =:= c)
-```
-
-The following is the list of the declarations of the predefined operators:
-
-```
-:-op(1200,fx,['?-', ':-']).
-:-op(1200,xfx,[':-','-->']).
-:-op(1150,fx,[block,dynamic,mode,public,multifile,meta_predicate,
-              sequential,table,initialization]).
-:-op(1100,xfy,[';','|']).
-:-op(1050,xfy,->).
-:-op(1000,xfy,',').
-:-op(999,xfy,'.').
-:-op(900,fy,['\+', not]).
-:-op(900,fx,[nospy, spy]).
-:-op(700,xfx,[@>=,@=<,@<,@>,<,=,>,=:=,=\=,\==,>=,=<,==,\=,=..,is]).
-:-op(500,yfx,['\/','/\','+','-']).
-:-op(500,fx,['+','-']).
-:-op(400,yfx,['<<','>>','//','*','/']).
-:-op(300,xfx,mod).
-:-op(200,xfy,['^','**']).
-:-op(50,xfx,same).
-```
-
 */
 
 #define xfx 1
@@ -199,9 +123,10 @@ The following is the list of the declarations of the predefined operators:
 int Yap_IsOpType(char *type) {
   int i;
 
-  for (i = 1; i <= 7; ++i)
+  for (i = 1; i <=7;i++) {
     if (strcmp(type, optypes[i]) == 0)
-      break;
+     break;
+  }
   return (i <= 7);
 }
 
@@ -378,10 +303,12 @@ static Opdef Ops[] = {{":-", xfx, 1200},
                       /*  {";", yf, 1100}, not allowed in ISO */
                       {"->", xfy, 1050},
                       {"*->", xfy, 1050},
-                      {",", xfy, 1000},
+                       {",", xfy, 1000},
                       {".", xfy, 999},
-                      {"\\+", fy, 900},
                       {"not", fy, 900},
+                      {"\\+", fy, 900},
+                      {"spy", fy, 900},
+                      {"nospy", fy, 900},
                       {"=", xfx, 700},
                       {"\\=", xfx, 700},
                       {"is", xfx, 700},
@@ -505,16 +432,14 @@ static UInt update_flags_from_prolog(UInt flags, PredEntry *pe) {
   return flags;
 }
 
-void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
-                   pred_flags_t flags) {
-  CACHE_REGS
+void Yap_InitCPredInModule(const char *Name, arity_t Arity, CPredicate code,
+                   pred_flags_t flags, Term mod) {
   Atom atom = NIL;
   PredEntry *pe = NULL;
   yamop *p_code;
   StaticClause *cl = NULL;
   Functor f = NULL;
   Term t;
-
   while (atom == NIL) {
     if (flags & UserCPredFlag)
       atom = Yap_LookupAtom(Name);
@@ -537,7 +462,7 @@ void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
         t = Yap_MkNewApplTerm(f,Arity);
   }
   while(pe ==NULL) {
-    pe = Yap_new_pred(t, CurrentModule, false, "when initializing C-predicate");
+    pe = Yap_new_pred(t, mod, false, "when initializing C-predicate");
     if (!pe && !Yap_growheap(FALSE, sizeof(PredEntry), NULL)) {
       Yap_Error(RESOURCE_ERROR_HEAP, TermNil, "while initializing %s", Name);
       return;
@@ -547,7 +472,7 @@ void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
     /* already exists */
     flags = update_flags_from_prolog(flags, pe);
     cl = ClauseCodeToStaticClause(pe->CodeOfPred);
-    if ((flags | StandardPredFlag | CPredFlag) != pe->PredFlags) {
+    if ((flags  | CPredFlag) != pe->PredFlags) {
       Yap_ClauseSpace -= cl->ClSize;
       Yap_FreeCodeSpace((ADDR)cl);
       cl = NULL;
@@ -579,8 +504,9 @@ void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
     }
   }
   pe->CodeOfPred = p_code;
+  pe->ModuleOfPred = mod;
   pe->PredFlags = flags | StandardPredFlag | CPredFlag;
-  pe->src.OwnerFile = Yap_ConsultingFile(PASS_REGS1);
+  pe->src.OwnerFile = Yap_source_file_name();
   pe->cs.f_code = code;
   if (!(flags & SafePredFlag)) {
     p_code->opc = Yap_opcode(_allocate);
@@ -607,6 +533,13 @@ void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
   pe->OpcodeOfPred = pe->CodeOfPred->opc;
 }
 
+void Yap_InitCPred(const char *Name, arity_t Arity, CPredicate code,
+                   pred_flags_t flags) {
+  CACHE_REGS
+  Yap_InitCPredInModule(Name, Arity, code, flags, CurrentModule);
+}
+
+
 bool Yap_AddCallToFli(PredEntry *pe, CPredicate call) {
   yamop *p_code;
 
@@ -622,7 +555,7 @@ bool Yap_AddCallToFli(PredEntry *pe, CPredicate call) {
   }
 }
 
-bool Yap_AddRetryToFli(PredEntry *pe, CPredicate re) {
+  bool Yap_AddRetryToFli(PredEntry *pe, CPredicate re) {
   yamop *p_code;
 
   if (pe->PredFlags & BackCPredFlag) {
@@ -802,24 +735,28 @@ void Yap_InitAsmPred(const char *Name, arity_t Arity, int code, CPredicate def,
     cl->usc.ClLine = Yap_source_line_no();
     p_code = cl->ClCode;
     pe->CodeOfPred = p_code;
-    if (!(flags & SafePredFlag)) {
+    if (flags & SafePredFlag) {
+    p_code->opc = Yap_opcode(_execute_cpred);
+    p_code->y_u.Osbpp.bmap = NULL;
+    p_code->y_u.Osbpp.s = -Signed(RealEnvSize);
+    p_code->y_u.Osbpp.p = p_code->y_u.Osbpp.p0 = pe;
+    p_code = NEXTOP(p_code, Osbpp);
+  } else {
       p_code->opc = Yap_opcode(_allocate);
       p_code = NEXTOP(p_code, e);
-    }
     p_code->opc = Yap_opcode(_call_cpred);
     p_code->y_u.Osbpp.bmap = NULL;
     p_code->y_u.Osbpp.s = -Signed(RealEnvSize);
     p_code->y_u.Osbpp.p = p_code->y_u.Osbpp.p0 = pe;
     p_code = NEXTOP(p_code, Osbpp);
-    if (!(flags & SafePredFlag)) {
       p_code->opc = Yap_opcode(_deallocate);
       p_code->y_u.p.p = pe;
       p_code = NEXTOP(p_code, p);
-    }
     p_code->opc = Yap_opcode(_procceed);
     p_code->y_u.p.p = pe;
     p_code = NEXTOP(p_code, p);
-    p_code->opc = Yap_opcode(_Ystop);
+}
+p_code->opc = Yap_opcode(_Ystop);
     p_code->y_u.l.l = cl->ClCode;
     pe->OpcodeOfPred = pe->CodeOfPred->opc;
   } else {
@@ -868,21 +805,9 @@ static void CleanBack(PredEntry *pe, CPredicate Start, CPredicate Cont,
   code->y_u.OtapFs.f = Cut;
 }
 
-void Yap_InitCPredBack(const char *Name, arity_t Arity, arity_t Extra,
-                       CPredicate Call, CPredicate Retry, pred_flags_t flags) {
-  Yap_InitCPredBack_(Name, Arity, Extra, Call, Retry, NULL, flags);
-}
-
-void Yap_InitCPredBackCut(const char *Name, arity_t Arity, arity_t Extra,
-                          CPredicate Start, CPredicate Cont, CPredicate Cut,
-                          pred_flags_t flags) {
-  Yap_InitCPredBack_(Name, Arity, Extra, Start, Cont, Cut, flags);
-}
-
-void Yap_InitCPredBack_(const char *Name, arity_t Arity, arity_t Extra,
+static void Yap_InitCPredBackInModule_(const char *Name, arity_t Arity, arity_t Extra,
                         CPredicate Start, CPredicate Cont, CPredicate Cut,
-                        pred_flags_t flags) {
-  CACHE_REGS
+				pred_flags_t flags, Term mod) {
   PredEntry *pe = NULL;
   Atom atom = NIL;
   Functor f = NULL;
@@ -895,6 +820,9 @@ void Yap_InitCPredBack_(const char *Name, arity_t Arity, arity_t Extra,
     }
   }
   if (Arity) {
+
+    
+    
     while (!f) {
       f = Yap_MkFunctor(atom, Arity);
       if (!f && !Yap_growheap(FALSE, 0L, NULL)) {
@@ -905,9 +833,9 @@ void Yap_InitCPredBack_(const char *Name, arity_t Arity, arity_t Extra,
   }
   while (pe == NULL) {
     if (Arity)
-      pe = RepPredProp(PredPropByFunc(f, CurrentModule));
+      pe = RepPredProp(PredPropByFunc(f, mod));
     else
-      pe = RepPredProp(PredPropByAtom(atom, CurrentModule));
+      pe = RepPredProp(PredPropByAtom(atom, mod));
     if (!pe && !Yap_growheap(FALSE, sizeof(PredEntry), NULL)) {
       Yap_Error(RESOURCE_ERROR_HEAP, TermNil, "while initializing %s", Name);
       return;
@@ -946,6 +874,7 @@ void Yap_InitCPredBack_(const char *Name, arity_t Arity, arity_t Extra,
     code = cl->ClCode;
     pe->cs.p_code.TrueCodeOfPred = pe->CodeOfPred = pe->cs.p_code.FirstClause =
         pe->cs.p_code.LastClause = code;
+    pe->ModuleOfPred = mod;
     if (flags & UserCPredFlag)
       pe->OpcodeOfPred = code->opc = Yap_opcode(_try_userc);
     else
@@ -984,6 +913,24 @@ void Yap_InitCPredBack_(const char *Name, arity_t Arity, arity_t Extra,
     code->opc = Yap_opcode(_Ystop);
     code->y_u.l.l = cl->ClCode;
   }
+}
+
+void Yap_InitCPredBack(const char *Name, arity_t Arity, arity_t Extra,
+                       CPredicate Call, CPredicate Retry, pred_flags_t flags) {
+  CACHE_REGS
+  Yap_InitCPredBackInModule_(Name, Arity, Extra, Call, Retry, NULL, flags, CurrentModule);
+}
+
+void Yap_InitCPredBackInModule(const char *Name, arity_t Arity, arity_t Extra,
+			       CPredicate Call, CPredicate Retry, pred_flags_t flags, Term mod) {
+  Yap_InitCPredBackInModule_(Name, Arity, Extra, Call, Retry, NULL, flags, mod);
+}
+
+void Yap_InitCPredBackCut(const char *Name, arity_t Arity, arity_t Extra,
+                          CPredicate Start, CPredicate Cont, CPredicate Cut,
+                          pred_flags_t flags) {
+  CACHE_REGS
+  Yap_InitCPredBackInModule_(Name, Arity, Extra, Start, Cont, Cut, flags, CurrentModule);
 }
 
 
@@ -1100,9 +1047,9 @@ static void InitAtoms(void) {
   Yap_ReleaseAtom(AtomFoundVar);
   AtomFreeTerm = Yap_LookupAtom("?");
   Yap_ReleaseAtom(AtomFreeTerm);
-  AtomEmptyAtom = Yap_LookupAtom("?");
-  Yap_ReleaseAtom(AtomEmptyAtom);
-  RepAtom(AtomEmptyAtom)->StrOfAE[0] = '\0';
+  AtomEmpty = Yap_LookupAtom("?");
+  Yap_ReleaseAtom(AtomEmpty);
+  RepAtom(AtomEmpty)->StrOfAE[0] = '\0';
   AtomNil = Yap_LookupAtom("[]");
   AtomDot = Yap_LookupAtom(".");
 #endif
@@ -1191,15 +1138,16 @@ static void InitThreadHandle(int wid) {
   pthread_mutex_init(&(REMOTE_ThreadHandle(wid).tlock_status), NULL);
   REMOTE_ThreadHandle(wid).tdetach = (CELL)0;
   REMOTE_ThreadHandle(wid).cmod = (CELL)0;
+  REMOTE_ThreadHandle(wid).itiq = TermNil;
   {
     mbox_t *mboxp = &REMOTE_ThreadHandle(wid).mbox_handle;
     pthread_mutex_t *mutexp;
-    pthread_cond_t *condp;
+    pthread_cond_t *emptyp;
     struct idb_queue *msgsp;
 
     mboxp->name = MkIntTerm(0);
-    condp = &mboxp->cond;
-    pthread_cond_init(condp, NULL);
+    emptyp = &mboxp->empty;
+    pthread_cond_init(emptyp, NULL);
     mutexp = &mboxp->mutex;
     pthread_mutex_init(mutexp, NULL);
     msgsp = &mboxp->msgs;
